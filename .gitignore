@@ -1,0 +1,15 @@
+node_modules/
+ui/dist/
+*.log
+.DS_Store
+
+# local runtime artifacts (regenerated from keys.md)
+store.json
+history.jsonl
+
+# bun
+.bun/
+
+# temp/runtime
+*.tmp
+*.swp
