@@ -70,13 +70,13 @@ export function DetailsModal({ entry, onClose }: Props) {
             onClick={onClose}
             className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           >
-            ✕
+            <i className="fa-solid fa-x" />
           </button>
         </div>
 
         {!tested ? (
           <div className="py-8 text-center text-slate-400">
-            Not tested yet. Click ▶ to run a test.
+            Not tested yet. Click <i className="fa- fa-play" /> to run a test.
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -109,7 +109,7 @@ export function DetailsModal({ entry, onClose }: Props) {
                 )}
               </div>
               {status.raw ? (
-                <pre className="min-h-0 flex-1 overflow-auto rounded border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+<pre className="min-0 flex-1 overflow-auto rounded border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-800 whitespace-pre-wrap break-words dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
                   {prettyRaw}
                 </pre>
               ) : (

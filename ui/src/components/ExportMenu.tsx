@@ -21,7 +21,8 @@ export function ExportMenu() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const handleDownload = async (format: (typeof FORMATS)[number]['id']) => {
+  const handleDownload = async (e: React.MouseEvent, format: (typeof FORMATS)[number]['id']) => {
+    e.stopPropagation();
     const url = api.exportURL(format);
     const res = await fetch(url);
     const blob = await res.blob();
@@ -48,10 +49,10 @@ export function ExportMenu() {
         onClick={() => setOpen((o) => !o)}
         className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
       >
-        Export ▾
+        <i className="fa-solid fa-file-export" /> Export <i className="fa-solid fa-chevron-down" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-800 dark:bg-slate-900">
           {FORMATS.map((f) => (
             <div
               key={f.id}
@@ -70,11 +71,11 @@ export function ExportMenu() {
                   Copy
                 </button>
                 <button
-                  onClick={() => handleDownload(f.id)}
+                  onClick={(e) => handleDownload(e, f.id)}
                   className="rounded px-2 py-0.5 text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30"
                   title="Download file"
                 >
-                  ↓
+                  <i className="fa-solid fa-download" />
                 </button>
               </div>
             </div>
