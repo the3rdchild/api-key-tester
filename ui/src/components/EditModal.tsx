@@ -73,7 +73,7 @@ export function EditModal({ open, providers, entry, onClose, onSave }: Props) {
             {entry ? `Edit: ${entry.label || entry.provider}` : 'Add new key'}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-            ✕
+            <i className="fa-solid fa-x" />
           </button>
         </div>
 
@@ -250,7 +250,7 @@ function CredentialInput({
         aria-label={revealed ? 'Hide value' : 'Reveal value'}
         tabIndex={-1}
       >
-        {revealed ? '🙈' : '👁'}
+        {revealed ? <i className="fa-solid fa-eye-slash" /> : <i className="fa-solid fa-eye" />}
       </button>
     </div>
   );

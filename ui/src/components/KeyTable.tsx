@@ -93,7 +93,7 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails }: Prop
                         className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                         title={k.status.detail ? `${k.status.detail}\n—\nClick for full details & raw response` : 'View test details & raw response'}
                       >
-                        ⓘ
+                        <i className="fa-solid fa-circle-info" />
                       </button>
                     )}
                   </div>
@@ -109,27 +109,27 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails }: Prop
                     <button
                       onClick={() => onTest(k.id)}
                       disabled={k.status.state === 'pending'}
-                      className="mr-2 text-sm text-emerald-600 hover:text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="mr-2 text-emerald-600 hover:text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed"
                       title="Test now"
                     >
-                      ▶
+                      <i className="fa-solid fa-play" />
                     </button>
                   )}
                   <button
                     onClick={() => onEdit(k)}
-                    className="mr-2 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    className="mr-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     title="Edit"
                   >
-                    ✎
+                    <i className="fa-solid fa-pen" />
                   </button>
                   <button
                     onClick={() => {
                       if (confirm(`Delete "${k.label || k.provider}"?`)) onDelete(k.id);
                     }}
-                    className="text-sm text-red-500 hover:text-red-700"
+                    className="text-red-500 hover:text-red-700"
                     title="Delete"
                   >
-                    🗑
+                    <i className="fa-solid fa-trash" />
                   </button>
                 </td>
               </tr>
@@ -157,7 +157,7 @@ function Th({
       onClick={onClick}
       className="cursor-pointer select-none px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
     >
-      {children} {active && (asc ? '↑' : '↓')}
+      {children} {active && (asc ? <i className="fa-solid fa-arrow-up" /> : <i className="fa-solid fa-arrow-down" />)}
     </th>
   );
 }

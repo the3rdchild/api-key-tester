@@ -148,7 +148,7 @@ export default function App() {
       {/* Topbar */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold">🔑 Key Tester</h1>
+          <h1 className="text-xl font-bold"><i className="fa-solid fa-key" /> Key Tester</h1>
           <span
             className={`inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-emerald-600' : 'text-slate-400'}`}
             title={wsConnected ? 'WebSocket connected — live updates' : 'WebSocket disconnected'}
@@ -158,7 +158,7 @@ export default function App() {
           </span>
           {lastFileChange && (
             <span className="text-xs text-amber-600" title={`keys.md changed externally at ${lastFileChange}`}>
-              📝 file synced
+              <i className="fa-solid fa-file-pen" /> file synced
             </span>
           )}
         </div>
@@ -168,13 +168,13 @@ export default function App() {
             onClick={handleAdd}
             className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
           >
-            + Add
+            <i className="fa-solid fa-plus" /> Add
           </button>
           <button
             onClick={() => setImportOpen(true)}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            Import
+            <i className="fa-solid fa-file-import" /> Import
           </button>
           <ExportMenu />
           <button
@@ -182,14 +182,14 @@ export default function App() {
             disabled={testingAll}
             className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {testingAll ? 'Testing…' : '▶ Test all'}
+            {testingAll ? <><i className="fa-solid fa-spinner fa-spin" /> Testing…</> : <><i className="fa-solid fa-play" /> Test all</>}
           </button>
           <button
             onClick={refresh}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             title="Refresh"
           >
-            ↻
+            <i className="fa-solid fa-rotate-right" />
           </button>
         </div>
       </header>

@@ -122,8 +122,8 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white p-6 shadow-xl dark:bg-slate-900 dark:border dark:border-slate-800">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Import keys</h2>
-          <button onClick={handleClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-            ✕
+          <button onClick={handleClose} className="text-2xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+            <i className="fa- fa-x" />
           </button>
         </div>
 
