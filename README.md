@@ -1,5 +1,7 @@
 # 🔑 API Key Tester
 
+![Home](docs/home.png)
+
 Local-first web app for **testing, managing, and exporting** API keys for LLM providers, tool APIs, and object storage.
 
 ## Quick start
