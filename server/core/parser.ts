@@ -414,7 +414,7 @@ function extractOpenAICompat(section: Section): ParsedEntry[] {
         label: labelFromTitle(section.title),
         credentials: { apiKey, baseURL: '' },
         testable: true,
-        warn: 'No baseURL detected — please fill manually',
+        warn: 'No baseURL detected - please fill manually',
       });
       continue;
     }
@@ -457,7 +457,7 @@ function extractOpenAICompat(section: Section): ParsedEntry[] {
         label: labelFromTitle(section.title),
         credentials: { apiKey: bareKey, baseURL },
         testable: Boolean(baseURL),
-        warn: baseURL ? undefined : 'No baseURL detected — please fill manually',
+        warn: baseURL ? undefined : 'No baseURL detected - please fill manually',
       });
     }
   }
@@ -532,7 +532,7 @@ function normalizeToV1(url: string): string {
   u = u.replace(/\/(chat\/completions| completions|messages|embeddings|models)$/i, '');
   u = u.replace(/\/+$/, '');
   // if path doesn't include /v1 but the host looks like an OpenAI-compat API,
-  // try appending /v1 — but only if no path is set yet
+  // try appending /v1 - but only if no path is set yet
   if (!/\/v\d+(\/|$)/i.test(u) && /\/(api|v1)\b/i.test(u) === false) {
     // conservative: don't auto-append, keep what we parsed
   }
@@ -780,7 +780,7 @@ const ENV_PROVIDER_PREFIXES: Array<{ p: Provider; prefixes: string[] }> = [
 
 export function parseEnv(text: string): ParsedEntry[] {
   const lines = text.split(/\r?\n/);
-  // bucket per (provider, instance) — instance is for OPENROUTER_API_KEY__2 etc.
+  // bucket per (provider, instance) - instance is for OPENROUTER_API_KEY__2 etc.
   const buckets = new Map<
     string,
     { provider: Provider; creds: Record<string, string>; label?: string }
@@ -814,7 +814,7 @@ export function parseEnv(text: string): ParsedEntry[] {
       resetPending();
       continue;
     }
-    // comment header: "# Label (provider)" — sets pending context
+    // comment header: "# Label (provider)" - sets pending context
     const headerM = /^#\s+(.+?)\s*\(([\w-]+)\)\s*$/.exec(line);
     if (headerM) {
       pendingLabel = headerM[1];
@@ -919,7 +919,7 @@ export function parseEnv(text: string): ParsedEntry[] {
         continue;
       }
     }
-    // unrecognized — reset pending context
+    // unrecognized - reset pending context
     resetPending();
   }
 

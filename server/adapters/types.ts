@@ -6,7 +6,7 @@ export interface Adapter {
   kind: ProviderKind;
   fields: FieldDef[];
   defaultSection?: string;
-  /** Run a lightweight test (target <3s). Should never throw — return error state. */
+  /** Run a lightweight test (target <3s). Should never throw - return error state. */
   test(creds: Record<string, string>): Promise<TestResult>;
 }
 
@@ -46,7 +46,7 @@ export function classifyResponse(
   if (res.status >= 500) {
     return { ...errorState(latencyMs, `Upstream ${res.status}: ${trim(body)}`, res.status), raw };
   }
-  // 404 / others: ambiguous — treat as error
+  // 404 / others: ambiguous - treat as error
   return { ...errorState(latencyMs, `HTTP ${res.status}: ${trim(body)}`, res.status), raw };
 }
 

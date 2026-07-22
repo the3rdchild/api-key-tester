@@ -5,7 +5,7 @@ import { listAdapters } from '../adapters/index.ts';
 
 export const keysRouter = new Hono();
 
-// GET /api/providers — adapter metadata (for UI dynamic form fields)
+// GET /api/providers - adapter metadata (for UI dynamic form fields)
 keysRouter.get('/providers', (c) => {
   const providers = listAdapters().map((a) => ({
     id: a.id,
@@ -17,7 +17,7 @@ keysRouter.get('/providers', (c) => {
   return c.json({ providers });
 });
 
-// GET /api/keys — list all, optional filter ?provider=&state=
+// GET /api/keys - list all, optional filter ?provider=&state=
 keysRouter.get('/', async (c) => {
   const provider = c.req.query('provider') as Provider | undefined;
   const state = c.req.query('state');
@@ -34,7 +34,7 @@ keysRouter.get('/:id', async (c) => {
   return c.json({ key });
 });
 
-// POST /api/keys — create
+// POST /api/keys - create
 keysRouter.post('/', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Partial<KeyEntry> | null;
   if (!body || !body.provider) {
@@ -53,7 +53,7 @@ keysRouter.post('/', async (c) => {
   return c.json({ key: created }, 201);
 });
 
-// PATCH /api/keys/:id — update creds/label/note
+// PATCH /api/keys/:id - update creds/label/note
 keysRouter.patch('/:id', async (c) => {
   const body = (await c.req.json().catch(() => null)) as Partial<KeyEntry> | null;
   if (!body) return c.json({ error: 'invalid body' }, 400);

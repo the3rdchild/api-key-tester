@@ -90,6 +90,6 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-console.log('dev mode — press Ctrl-C to stop');
+console.log('dev mode - press Ctrl-C to stop');
 console.log('  API → http://127.0.0.1:8788');
 console.log('  UI  → http://localhost:5174');

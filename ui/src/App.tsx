@@ -151,7 +151,7 @@ export default function App() {
           <h1 className="text-xl font-bold"><i className="fa-solid fa-key" /> Key Tester</h1>
           <span
             className={`inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-emerald-600' : 'text-slate-400'}`}
-            title={wsConnected ? 'WebSocket connected — live updates' : 'WebSocket disconnected'}
+            title={wsConnected ? 'WebSocket connected - live updates' : 'WebSocket disconnected'}
           >
             <span className={`inline-block h-2 w-2 rounded-full ${wsConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             {wsConnected ? 'live' : 'offline'}

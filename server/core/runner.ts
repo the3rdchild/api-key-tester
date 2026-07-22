@@ -17,7 +17,7 @@ export async function runOne(keyId: string, events?: RunEvents): Promise<KeyEntr
   if (!entry.testable) {
     const status: TestStatus = {
       state: 'error',
-      detail: 'Reference entry — not testable',
+      detail: 'Reference entry - not testable',
       testedAt: new Date().toISOString(),
     };
     await setStatus(keyId, status);

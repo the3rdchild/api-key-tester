@@ -70,7 +70,7 @@ function toEnv(keys: Awaited<ReturnType<typeof getAllKeys>>): string {
 }
 
 function toCurl(keys: Awaited<ReturnType<typeof getAllKeys>>): string {
-  const out: string[] = ['# curl snippets — paste-ready', ''];
+  const out: string[] = ['# curl snippets - paste-ready', ''];
   for (const k of keys) {
     if (!k.testable) continue;
     if (k.provider === 'anthropic') {

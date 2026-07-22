@@ -84,7 +84,7 @@ async function main() {
     if (result.created === 0) {
       console.log(`  ✓ PASS`);
     } else {
-      console.log(`  ✗ FAIL — created ${result.created} new entries from self-export`);
+      console.log(`  ✗ FAIL - created ${result.created} new entries from self-export`);
       allPass = false;
     }
 
@@ -104,7 +104,7 @@ async function main() {
   if (final === baseline && allPass) {
     console.log('✓ ALL PASS');
   } else {
-    console.log(`✗ FAIL — delta ${final - baseline}`);
+    console.log(`✗ FAIL - delta ${final - baseline}`);
   }
 }
 

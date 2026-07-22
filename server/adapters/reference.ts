@@ -12,7 +12,7 @@ export const reference: Adapter = {
     { key: 'value', label: 'Value', type: 'textarea' },
   ],
   test: async () => {
-    const result: TestResult = { state: 'error', detail: 'Reference entry — not testable' };
+    const result: TestResult = { state: 'error', detail: 'Reference entry - not testable' };
     return result;
   },
 };

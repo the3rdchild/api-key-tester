@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 export function MaskedKey({ value, visible = 4 }: { value: string; visible?: number }) {
   const [copied, setCopied] = useState(false);
-  if (!value) return <span className="text-slate-400 italic">—</span>;
+  if (!value) return <span className="text-slate-400 italic">-</span>;
 
   const masked =
     value.length <= visible * 2
@@ -15,7 +15,7 @@ export function MaskedKey({ value, visible = 4 }: { value: string; visible?: num
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
-      /* clipboard blocked — ignore silently */
+      /* clipboard blocked - ignore silently */
     }
   };
 

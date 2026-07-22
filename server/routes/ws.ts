@@ -1,4 +1,4 @@
-// WebSocket hub — minimal pub/sub used by routes/runner to push live updates.
+// WebSocket hub - minimal pub/sub used by routes/runner to push live updates.
 //
 // Hono (with @hono/node-server) gives us the raw Node http.Server in the
 // "server" export of index.ts; we upgrade there using 'ws'. To avoid an extra

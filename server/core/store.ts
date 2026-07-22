@@ -233,7 +233,7 @@ export async function setStatus(
   if (idx === -1) return;
   keys[idx].status = status;
   keys[idx].updatedAt = new Date().toISOString();
-  // status lives in store.json only — do NOT touch keys.md here
+  // status lives in store.json only - do NOT touch keys.md here
   await persist();
   changed();
 }

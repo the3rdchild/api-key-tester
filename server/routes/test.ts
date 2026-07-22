@@ -7,7 +7,7 @@ export const testRouter = new Hono();
 
 const emit = (evt: WSEvent) => broadcast(evt);
 
-// POST /api/test/:id — run single key test
+// POST /api/test/:id - run single key test
 testRouter.post('/:id', async (c) => {
   const id = c.req.param('id');
   const entry = await runOne(id, {

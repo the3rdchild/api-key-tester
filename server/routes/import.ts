@@ -45,7 +45,7 @@ async function buildExistingKeys(): Promise<{
   return { byPrefix, byLabel };
 }
 
-// POST /api/preview-import — parse text (auto-detect format), return preview
+// POST /api/preview-import - parse text (auto-detect format), return preview
 // Exported as a standalone handler so it can be mounted at /api/preview-import
 // (not /api/import/preview) in index.ts.
 export async function previewImportHandler(c: Context) {
@@ -83,7 +83,7 @@ export async function previewImportHandler(c: Context) {
   });
 }
 
-// POST /api/import — parse + persist (skip duplicates by default)
+// POST /api/import - parse + persist (skip duplicates by default)
 importRouter.post('/', async (c) => {
   const body = (await c.req.json().catch(() => null)) as
     | { text?: string; format?: ImportFormat; mergeExisting?: boolean; allowDuplicates?: boolean }

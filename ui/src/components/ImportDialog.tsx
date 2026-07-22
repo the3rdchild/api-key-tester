@@ -71,7 +71,7 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
       reset();
       onImported();
       onClose();
-      // surface outcome via onImported toast in parent — but also return summary
+      // surface outcome via onImported toast in parent - but also return summary
       window.dispatchEvent(
         new CustomEvent('import-result', {
           detail: {
@@ -130,7 +130,7 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
         <p className="mb-3 text-sm text-slate-500">
           Upload a file or paste raw content. Supported formats:{' '}
           <code className="text-xs">.md / .json / .env / .csv / curl snippets</code>.
-          Auto-detected — same parser handles everything you can Export.
+          Auto-detected - same parser handles everything you can Export.
         </p>
 
         {/* File dropzone */}
@@ -150,7 +150,7 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
         >
           {fileName ? (
             <span className="text-slate-700 dark:text-slate-300">
-              📄 <strong>{fileName}</strong> loaded —{' '}
+              📄 <strong>{fileName}</strong> loaded -{' '}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -249,8 +249,8 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
                       }`}
                     >
                       <td className="px-2 py-1 font-mono">{e.provider}</td>
-                      <td className="px-2 py-1">{e.label || '—'}</td>
-                      <td className="px-2 py-1 font-mono">{e.apiKeyMasked || '—'}</td>
+                      <td className="px-2 py-1">{e.label || '-'}</td>
+                      <td className="px-2 py-1 font-mono">{e.apiKeyMasked || '-'}</td>
                       <td className="px-2 py-1">
                         {e.duplicate ? (
                           <span className="text-amber-600">existing</span>

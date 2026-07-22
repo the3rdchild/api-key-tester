@@ -80,7 +80,7 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails }: Prop
                     <div className="text-xs text-slate-400 font-mono">{k.section}</div>
                   )}
                 </td>
-                <td className="px-4 py-2 text-sm">{k.label || '—'}</td>
+                <td className="px-4 py-2 text-sm">{k.label || '-'}</td>
                 <td className="px-4 py-2">
                   <MaskedKey value={apiKey} />
                 </td>
@@ -91,7 +91,7 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails }: Prop
                       <button
                         onClick={() => onShowDetails(k)}
                         className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                        title={k.status.detail ? `${k.status.detail}\n—\nClick for full details & raw response` : 'View test details & raw response'}
+                        title={k.status.detail ? `${k.status.detail}\n-\nClick for full details & raw response` : 'View test details & raw response'}
                       >
                         <i className="fa-solid fa-circle-info" />
                       </button>
@@ -99,10 +99,10 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails }: Prop
                   </div>
                 </td>
                 <td className="px-4 py-2 text-sm font-mono">
-                  {k.status.latencyMs != null ? `${k.status.latencyMs}ms` : '—'}
+                  {k.status.latencyMs != null ? `${k.status.latencyMs}ms` : '-'}
                 </td>
                 <td className="px-4 py-2 text-xs text-slate-500">
-                  {k.status.testedAt ? new Date(k.status.testedAt).toLocaleString() : '—'}
+                  {k.status.testedAt ? new Date(k.status.testedAt).toLocaleString() : '-'}
                 </td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   {k.testable && (

@@ -7,7 +7,7 @@
 //   ...
 //   ```
 //
-// Status info (lastTestedAt, etc.) is NOT written to keys.md — that lives in
+// Status info (lastTestedAt, etc.) is NOT written to keys.md - that lives in
 // store.json. Only credentials + labels + notes are persisted to the md mirror.
 
 import type { KeyEntry, Provider } from '../../shared/types.ts';
@@ -17,9 +17,9 @@ void _pp;
 
 export function writeMarkdown(entries: KeyEntry[]): string {
   const lines: string[] = [
-    '# Reacteev — API Keys & Secrets',
+    '# Reacteev - API Keys & Secrets',
     '',
-    '> Managed by key-tester. Edit freely — changes sync back to the UI.',
+    '> Managed by key-tester. Edit freely - changes sync back to the UI.',
     `> Last regenerated: ${new Date().toISOString()}`,
     '',
     '---',

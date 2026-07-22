@@ -18,7 +18,7 @@ interface OpenAICompatOpts {
 /**
  * Factory for any OpenAI-compatible provider.
  * Test strategy:
- *   1. GET {base}/models — costs 0 tokens, fastest signal
+ *   1. GET {base}/models - costs 0 tokens, fastest signal
  *   2. Fallback: POST {base}/chat/completions with max_tokens:1 (some proxies don't implement /models)
  */
 export function makeOpenAICompat(opts: OpenAICompatOpts): Adapter {
@@ -55,7 +55,7 @@ export function makeOpenAICompat(opts: OpenAICompatOpts): Adapter {
         });
         let result = classifyResponse(probe.res, probe.latencyMs, await probe.res.text());
 
-        // 2) Some proxies don't implement /models — fallback to a 1-token chat
+        // 2) Some proxies don't implement /models - fallback to a 1-token chat
         if (result.state !== 'valid' && probe.res.status === 404) {
           result = await chatProbe(baseURL, apiKey, creds.model);
         }

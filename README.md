@@ -20,13 +20,13 @@ bun start             # → http://127.0.0.1:8788 (serves UI + API)
 
 ## What it does
 
-- **Tests keys** via cheap probes (GET `/models`, `HeadBucket`, etc.) — costs nothing on most providers
-- **Two-way file sync** — edit `keys.md` in your editor, the UI updates live; edit in the UI, the file is rewritten
-- **CRUD via UI** — add/edit/delete keys with dynamic fields per provider
-- **Import** — paste raw markdown / env / curl snippets, preview, then commit
-- **Export** — `.md`, `.json`, `.env`, `curl` snippets, or `.csv`
-- **Live updates** — WebSocket pushes test results and store changes instantly
-- **History log** — `history.jsonl` keeps the last 50 results per key
+- **Tests keys** via cheap probes (GET `/models`, `HeadBucket`, etc.) - costs nothing on most providers
+- **Two-way file sync** - edit `keys.md` in your editor, the UI updates live; edit in the UI, the file is rewritten
+- **CRUD via UI** - add/edit/delete keys with dynamic fields per provider
+- **Import** - paste raw markdown / env / curl snippets, preview, then commit
+- **Export** - `.md`, `.json`, `.env`, `curl` snippets, or `.csv`
+- **Live updates** - WebSocket pushes test results and store changes instantly
+- **History log** - `history.jsonl` keeps the last 50 results per key
 
 ## Supported providers
 
@@ -59,7 +59,7 @@ key-tester/
 
 - **`store.json`** is canonical for: `id`, `status`, `lastTestedAt`, history references
 - **`keys.md`** is canonical for: `credentials`, `label`, `baseURL`, `note` (so you can edit it directly)
-- The watcher debounces external file changes (300 ms) and merges them by matching `provider + apiKeyPrefix(8) + section` — status is preserved, credentials are updated
+- The watcher debounces external file changes (300 ms) and merges them by matching `provider + apiKeyPrefix(8) + section` - status is preserved, credentials are updated
 - When the server itself writes `keys.md` (via UI edit), it tags the write to prevent feedback loops
 
 ## API reference
@@ -100,7 +100,7 @@ All probes use a 6 s timeout. Failures classify as `invalid` (401/403), `rate_li
 
 ### Add a new OpenAI-compatible provider
 
-No code change needed — use the "OpenAI-compatible (generic)" provider in the UI and supply `baseURL`.
+No code change needed - use the "OpenAI-compatible (generic)" provider in the UI and supply `baseURL`.
 
 ### Add a new native provider
 
@@ -110,5 +110,5 @@ No code change needed — use the "OpenAI-compatible (generic)" provider in the 
 
 ## Troubleshooting
 
-- **WebSocket shows "offline"** — dev mode runs both processes; the API must be up for `/live` to upgrade. Check the `[api]` log.
-- **Parser misses a key** — run `bun run parse` to dry-run the parser and see what it extracts. Messy formats (account/password-only sections) intentionally become `reference` entries (shown but not testable).
+- **WebSocket shows "offline"** - dev mode runs both processes; the API must be up for `/live` to upgrade. Check the `[api]` log.
+- **Parser misses a key** - run `bun run parse` to dry-run the parser and see what it extracts. Messy formats (account/password-only sections) intentionally become `reference` entries (shown but not testable).
