@@ -8,6 +8,7 @@ import { ImportDialog } from './components/ImportDialog.tsx';
 import { ExportMenu } from './components/ExportMenu.tsx';
 import { DetailsModal } from './components/DetailsModal.tsx';
 import { RawTesterModal } from './components/RawTesterModal.tsx';
+import { ManualTesterModal } from './components/ManualTesterModal.tsx';
 
 export default function App() {
   const { keys, loading, error, refresh, wsConnected, lastFileChange } = useStore();
@@ -17,6 +18,7 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [detailsEntry, setDetailsEntry] = useState<KeyEntry | null>(null);
   const [testerEntry, setTesterEntry] = useState<KeyEntry | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
   const [filterProvider, setFilterProvider] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('');
@@ -283,6 +285,16 @@ export default function App() {
         entry={testerEntry ? keys.find((k) => k.id === testerEntry.id) ?? testerEntry : null}
         onClose={() => setTesterEntry(null)}
       />
+      <ManualTesterModal open={manualOpen} onClose={() => setManualOpen(false)} />
+
+      {/* Floating manual-tester button */}
+      <button
+        onClick={() => setManualOpen(true)}
+        title="Manual API tester"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-lg text-white shadow-lg hover:bg-indigo-700"
+      >
+        <i className="fa-solid fa-paper-plane" />
+      </button>
 
       {/* Toast */}
       {toast && (

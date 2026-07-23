@@ -13,7 +13,7 @@ interface HeaderRow {
   value: string;
 }
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'QUERY'];
 
 function toRows(h: Record<string, string>): HeaderRow[] {
   const rows = Object.entries(h).map(([key, value]) => ({ key, value }));
