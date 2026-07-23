@@ -7,6 +7,7 @@ import { EditModal } from './components/EditModal.tsx';
 import { ImportDialog } from './components/ImportDialog.tsx';
 import { ExportMenu } from './components/ExportMenu.tsx';
 import { DetailsModal } from './components/DetailsModal.tsx';
+import { RawTesterModal } from './components/RawTesterModal.tsx';
 
 export default function App() {
   const { keys, loading, error, refresh, wsConnected, lastFileChange } = useStore();
@@ -15,6 +16,7 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [detailsEntry, setDetailsEntry] = useState<KeyEntry | null>(null);
+  const [testerEntry, setTesterEntry] = useState<KeyEntry | null>(null);
   const [testingAll, setTestingAll] = useState(false);
   const [filterProvider, setFilterProvider] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('');
@@ -255,6 +257,7 @@ export default function App() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onShowDetails={setDetailsEntry}
+          onSendTest={setTesterEntry}
         />
       </div>
 
@@ -275,6 +278,10 @@ export default function App() {
         // keep entry in sync with latest test results so the modal updates live
         entry={detailsEntry ? keys.find((k) => k.id === detailsEntry.id) ?? null : null}
         onClose={() => setDetailsEntry(null)}
+      />
+      <RawTesterModal
+        entry={testerEntry ? keys.find((k) => k.id === testerEntry.id) ?? testerEntry : null}
+        onClose={() => setTesterEntry(null)}
       />
 
       {/* Toast */}

@@ -84,4 +84,18 @@ export const api = {
       body: JSON.stringify({ text, ...(opts || {}) }),
     }),
   exportURL: (format: 'md' | 'json' | 'env' | 'curl' | 'csv') => `/api/export?format=${format}`,
+  sendRaw: (input: { method: string; url: string; headers: Record<string, string>; body?: string }) =>
+    req<RawResponse>('/api/raw', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
+
+export interface RawResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  latencyMs: number;
+  body: string;
+  truncated: boolean;
+}
