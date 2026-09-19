@@ -133,6 +133,17 @@ export function interpolateSpec(
     auth.oauth2 = oauth;
   }
 
+  // Assertions take variables too: "$.user.id eq {{expectedId}}" is a normal
+  // thing to want, and so is a source path built from one.
+  const assertions = spec.assertions?.map((a) => {
+    const source = interpolate(a.source, lookup);
+    for (const m of source.missing) missing.add(m);
+    if (typeof a.value !== 'string' || !a.value) return { ...a, source: source.out };
+    const value = interpolate(a.value, lookup);
+    for (const m of value.missing) missing.add(m);
+    return { ...a, source: source.out, value: value.out };
+  });
+
   return {
     spec: {
       ...spec,
@@ -141,6 +152,7 @@ export function interpolateSpec(
       headers: rows(spec.headers, lookup, missing),
       auth,
       body,
+      ...(assertions ? { assertions } : {}),
     },
     missing: [...missing],
   };

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import { ClientView } from './client/ClientView.tsx';
+import { RunnerView } from './client/RunnerView.tsx';
 import { VaultView } from './components/VaultView.tsx';
 
-type Screen = 'client' | 'vault';
+type Screen = 'client' | 'runner' | 'vault';
 
 const SCREEN_KEY = 'key-tester.screen';
 
@@ -11,7 +12,7 @@ const SCREEN_KEY = 'key-tester.screen';
 export default function App() {
   const [screen, setScreen] = useState<Screen>(() => {
     const saved = localStorage.getItem(SCREEN_KEY);
-    return saved === 'vault' ? 'vault' : 'client';
+    return saved === 'vault' || saved === 'runner' ? saved : 'client';
   });
 
   useEffect(() => {
@@ -27,13 +28,18 @@ export default function App() {
         <ScreenTab active={screen === 'client'} onClick={() => setScreen('client')} icon="fa-bolt">
           API client
         </ScreenTab>
+        <ScreenTab active={screen === 'runner'} onClick={() => setScreen('runner')} icon="fa-play">
+          Runner
+        </ScreenTab>
         <ScreenTab active={screen === 'vault'} onClick={() => setScreen('vault')} icon="fa-key">
           Vault
         </ScreenTab>
       </nav>
 
       <main className="min-h-0 flex-1">
-        {screen === 'client' ? <ClientView /> : <VaultView />}
+        {screen === 'client' && <ClientView />}
+        {screen === 'runner' && <RunnerView />}
+        {screen === 'vault' && <VaultView />}
       </main>
     </div>
   );

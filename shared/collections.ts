@@ -222,6 +222,40 @@ export interface SendResult {
   scriptError?: string;
 }
 
+export interface RunCheck {
+  name: string;
+  passed: boolean;
+  detail?: string;
+}
+
+export interface RunItemResult {
+  requestId: string;
+  name: string;
+  method: string;
+  url: string;
+  status?: number;
+  latencyMs?: number;
+  error?: string;
+  checks: RunCheck[];
+  passed: boolean;
+  skipped?: boolean;
+}
+
+export interface RunSummary {
+  id: string;
+  startedAt: string;
+  finishedAt?: string;
+  /** what was run: a folder name, "whole collection", … */
+  label: string;
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  durationMs: number;
+  cancelled?: boolean;
+  items: RunItemResult[];
+}
+
 export interface ReqHistoryEntry {
   id: string;
   ts: string;

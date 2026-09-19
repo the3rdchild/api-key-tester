@@ -2,7 +2,7 @@
 // Keep this file dependency-free so it can be imported anywhere.
 // (The API-client domain - collections, requests - lives in collections.ts.)
 
-import type { ReqHistoryEntry } from './collections.ts';
+import type { ReqHistoryEntry, RunItemResult, RunSummary } from './collections.ts';
 
 export type Provider =
   // OpenAI-compatible family
@@ -109,6 +109,9 @@ export type WSEvent =
   | { type: 'file:changed'; path: string }
   | { type: 'collections:changed' }
   | { type: 'oauth:token'; tokenId: string }
+  | { type: 'run:started'; run: RunSummary }
+  | { type: 'run:item'; runId: string; item: RunItemResult }
+  | { type: 'run:done'; run: RunSummary }
   | { type: 'req-history:appended'; entry: ReqHistoryEntry };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {

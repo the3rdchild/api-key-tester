@@ -200,7 +200,7 @@ Layout tetap (tab penuh):
 | **M2** | Variabel + environment + chaining + auth dari vault + import cURL | ✅ selesai — setara Postman harian |
 | **M3** | Sandbox QuickJS + assertion + tab Tests | ✅ selesai |
 | **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | ✅ selesai |
-| **M5** | Collection runner + CLI + reporter | Bisa dipakai di CI |
+| **M5** | Collection runner + CLI + reporter | ✅ selesai — bisa dipakai di CI |
 | **M6** | Khas LLM: streaming SSE + token/detik, matrix run lintas key, kolom kuota | Yang tidak dimiliki Postman |
 | **M7** | Import Postman v2.1 / Insomnia / OpenAPI | Migrasi koleksi kantor |
 
@@ -329,6 +329,28 @@ Keputusan saat implementasi:
 - **PKCE menyala secara default** untuk authorization_code; `code_verifier` disimpan di memori bersama `state` dan kedaluwarsa dalam 10 menit.
 - **Halaman callback melayani dua kasus**: `?code=` ditukar di server, sedangkan implicit (`#access_token=`) tidak pernah sampai ke server sehingga halaman itu sendiri yang mengirimkannya balik lewat `/api/oauth/implicit`.
 - **Header `Authorization` tulisan tangan tetap menang** atas token OAuth2 — aturan yang sama seperti vault.
+
+## 10f. Status M5 (selesai 2026-09-19)
+
+| Bagian | File | Bukti |
+|---|---|---|
+| Runner berurutan | `server/core/collection-runner.ts` | folder 5 request jalan berurutan, hasil per request + per assertion |
+| Variabel mengalir di dalam run | idem | request ke-2 memakai `{{socketCount}}` yang di-set script request ke-1; dibuktikan lewat echo server: `$.query.token` cocok `^[0-9]+$`, bukan string `{{socketCount}}` |
+| Progress langsung | `server/routes/runner.ts` + WS | `run:started` → 5× `run:item` → `run:done` diterima klien saat run berjalan |
+| Cancel & stop-on-failure | `collection-runner.ts` | sisa request ditandai `skipped`, bukan dihapus dari laporan |
+| CLI | `scripts/run.ts` | `bun scripts/run.ts Smoke` → laporan rapi; `--bail` keluar dengan **exit code 1** saat ada yang gagal |
+| Reporter JUnit | idem | XML valid: `<testsuites tests="5" failures="1">` dengan `<failure message="latencyMs lt 0 — actual: 0">` |
+| UI Runner | `ui/src/client/RunnerView.tsx` | tab ketiga di shell: pilih folder/environment/delay, ringkasan lulus-gagal, detail check yang gagal, tombol "Rerun N failed" |
+
+Keputusan saat implementasi:
+
+- **Berurutan, bukan paralel.** Satu run biasanya sebuah alur (login dulu, baru pakai tokennya), dan chaining hanya bermakna kalau urutannya terjaga. Paralel menukar properti yang justru jadi alasan runner ini ada dengan sedikit kecepatan.
+- **Request dari runner tidak masuk `requests-history.jsonl`.** Satu run folder berisi 30 request akan menggusur seluruh history manual yang cuma menyimpan 200 entri.
+- **Kriteria lulus:** tidak ada error transport, script tidak melempar, dan semua check hijau. Kalau request tidak punya assertion sama sekali, status HTTP non-2xx dihitung gagal — kalau kamu memang mengharapkan 404, tulis assertion-nya.
+- **CLI berdiri sendiri**, membaca `collections.json` langsung tanpa server. Jadi bisa dipanggil di CI tanpa menyalakan panel: `docker compose exec key-tester bun scripts/run.ts Smoke --bail`.
+- **Nilai assertion sekarang ikut diinterpolasi** (`$.user.id eq {{expectedId}}`). Celah ini ketahuan waktu menulis fixture runner — sebelumnya hanya URL/header/body yang kena interpolasi.
+
+Folder contoh `Smoke` ditinggal di `collections.json` (3 request, lulus semua) sebagai titik awal.
 
 ## 11. Yang masih terbuka
 

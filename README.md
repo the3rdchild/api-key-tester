@@ -57,6 +57,7 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Scripts** — pre-request and post-response JavaScript in a QuickJS sandbox (no network, no filesystem, 32 MB, 5 s). `req` is mutable, `res` carries `json`, and `bru.getVar/setVar/getEnvVar/setEnvVar` move values between requests. `console.log` output lands in the response pane
 - **Tests** — `test('name', () => expect(res.status).toBe(200))` from scripts, plus declarative assertions (source · operator · value) over `status`, `latencyMs`, `size`, `headers.<name>` or a JSON path like `$.data.0.id`. Results show as a pass/fail chip on the response and as `passed/total` in history
 - **OAuth 2.0** — client credentials, password, authorization code (PKCE on by default), implicit, refresh token and device code. Tokens are cached, refreshed a minute before they expire, and a request whose flow still needs the browser is refused rather than sent to collect a 401. The redirect URI is `http://127.0.0.1:8788/oauth/callback`
+- **Runner** — run a folder in order (variables set by one request are there for the next), with live progress, per-assertion detail and a "rerun failed" button
 - **Copy as curl** — exactly what was sent, auth included
 
 Dependencies are installed **inside the container** (`docker compose exec key-tester bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec key-tester bunx tsc --noEmit`.
@@ -64,6 +65,17 @@ Dependencies are installed **inside the container** (`docker compose exec key-te
 Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth references a key by id, and OAuth2 tokens live in `oauth-tokens.json` (gitignored) — the collection keeps only endpoints, client id and scope.
 
 Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar, `Alt+I` import cURL.
+
+### Running a collection from the terminal
+
+```bash
+docker compose exec key-tester bun scripts/run.ts --list          # what is runnable
+docker compose exec key-tester bun scripts/run.ts Smoke           # run one folder
+docker compose exec key-tester bun scripts/run.ts Smoke --bail    # stop at the first failure
+docker compose exec key-tester bun scripts/run.ts --reporter junit --out report.xml
+```
+
+The CLI reads `collections.json` directly — no server needed — and exits non-zero when anything failed, so CI can judge it by the exit code alone. `--env <name>` picks an environment, `--request <name>` runs a single request, `--delay <ms>` paces the run.
 
 ## What it does
 

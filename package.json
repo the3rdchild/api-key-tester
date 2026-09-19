@@ -12,7 +12,8 @@
     "start": "bun server/index.ts",
     "parse": "bun scripts/parse-once.ts",
     "benchmark": "bun scripts/benchmark.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "run:collection": "bun scripts/run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
