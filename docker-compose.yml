@@ -5,11 +5,21 @@ services:
     image: key-tester:local
     container_name: key-tester
 
-    # Hanya loopback. store.json memuat API key asli dan panel tidak punya
-    # autentikasi sama sekali, jadi jangan dipublish ke 0.0.0.0. Kalau perlu
-    # diakses dari luar, tunnel port 8788 lewat panel di ../port-forward.
-    ports:
-      - "127.0.0.1:8788:8788"
+    # WAJIB sejak project ini dipakai sebagai API tester umum, bukan sekadar
+    # penguji key cloud. Docker di mesin ini rootless; dalam mode bridge,
+    # container tidak bisa menyentuh dev server di host sama sekali (diuji:
+    # host.docker.internal:4321 dan 172.17.0.1:4321 dua-duanya connection
+    # refused, sementara lewat network host 127.0.0.1:4321 menjawab 200).
+    # Dengan network host, "localhost" di dalam container = localhost mesin,
+    # jadi request ke http://localhost:3000 dst. bisa diuji dari panel.
+    network_mode: host
+
+    # Docker tetap menulis ulang resolv.conf container ke DNS slirp4netns
+    # (10.0.2.3) walau memakai network host - alamat itu hanya ada di jaringan
+    # bridge rootless. Kembalikan ke stub resolver host, sama seperti
+    # ../port-forward dan ../local-web-player.
+    dns:
+      - ${PANEL_DNS:-127.0.0.53}
 
     restart: unless-stopped
 
@@ -21,10 +31,11 @@ services:
     init: true
 
     environment:
-      # server/index.ts:154-155 membaca HOST/PORT. Di dalam container HOST wajib
-      # 0.0.0.0; default 127.0.0.1 hanya loopback container dan tidak terjangkau
-      # port mapping. Pembatasan akses tetap dipegang oleh `ports` di atas.
-      HOST: 0.0.0.0
+      # server/index.ts:154-155 membaca HOST/PORT. Dengan network host, bind ke
+      # 127.0.0.1 berarti panel hanya dengar di loopback mesin - itu yang kita
+      # mau, karena store.json memuat API key asli dan panel tidak punya auth.
+      # Kalau perlu diakses dari luar, tunnel port 8788 lewat ../port-forward.
+      HOST: 127.0.0.1
       PORT: 8788
       TZ: ${TZ:-Asia/Jakarta}
       # Tulis balik hasil edit UI ke keys.md (server/core/store.ts:245). Default

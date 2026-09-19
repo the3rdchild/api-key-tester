@@ -16,3 +16,6 @@ scripts
 *.xlsx
 README.md
 dev.mjs
+
+# repo referensi (bruno, hoppscotch) - jangan masuk konteks build
+ref/

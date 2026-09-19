@@ -18,3 +18,5 @@ history.jsonl
 benchmark/
 benchmark/benchmark.xlsx
 benchmark/List of LLM Models.xlsx
+# referensi read-only (clone dangkal, bukan bagian build)
+ref/
