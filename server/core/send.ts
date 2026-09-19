@@ -6,8 +6,10 @@
 // redirect policy, form/multipart bodies, a cookie jar, redirect chain and
 // response metrics.
 
-import { interpolateSpec } from './vars.ts';
+import { chainLookups, fromRecord, interpolateSpec, type VarLookup } from './vars.ts';
 import { cookieHeaderFor, captureSetCookies } from './cookies.ts';
+import { remember, responseLookup } from './responses.ts';
+import { resolveVaultAuth, type VaultAuth } from './vault-auth.ts';
 import type { RedirectHop, RequestSpec, SendResult } from '../../shared/collections.ts';
 
 /** Body bytes kept in the response payload; the full size is still reported. */
@@ -22,6 +24,15 @@ export interface SendOptions {
   vars?: Record<string, string>;
 }
 
+/** env/runtime vars → chained responses → vault fields. First hit wins. */
+function buildLookup(vars: Record<string, string> | undefined, vault: VaultAuth | null): VarLookup {
+  return chainLookups(
+    fromRecord(vars ?? {}),
+    responseLookup(),
+    vault ? fromRecord(vault.vars) : undefined,
+  );
+}
+
 export interface SendOutcome {
   result: SendResult;
   /** exactly what went out, for the history log */
@@ -29,6 +40,8 @@ export interface SendOutcome {
   sentBody?: string;
   /** {{names}} that had no value */
   missing: string[];
+  /** advisory from the vault (unsupported provider, freshly signed JWT, …) */
+  note?: string;
 }
 
 function buildUrl(spec: RequestSpec): URL {
@@ -120,17 +133,25 @@ export async function sendRequest(
   rawSpec: RequestSpec,
   opts: SendOptions = {},
 ): Promise<SendOutcome> {
-  const { spec, missing } = interpolateSpec(rawSpec, opts.vars ?? {});
+  // Resolve the vault first: its non-secret fields ({{vault.baseURL}} and
+  // friends) have to exist before the spec is interpolated.
+  const vault =
+    rawSpec.auth?.type === 'vault' && rawSpec.auth.keyId
+      ? await resolveVaultAuth(rawSpec.auth.keyId)
+      : null;
+  const lookup = buildLookup(opts.vars, vault);
+  const { spec, missing } = interpolateSpec(rawSpec, lookup);
 
   let url: URL;
   try {
     url = buildUrl(spec);
   } catch {
-    return {
-      result: errorResult(`Invalid URL: ${spec.url || '(empty)'}`, 0),
-      sentHeaders: {},
-      missing,
-    };
+    // An unresolved {{var}} usually lands here as an invalid URL - say that
+    // instead of making the user decode "Invalid URL: {{baseURL}}/auth/login".
+    const why = missing.length
+      ? `Undefined variable${missing.length > 1 ? 's' : ''}: ${missing.join(', ')} — set ${missing.length > 1 ? 'them' : 'it'} in the Environment panel, or chain from an earlier response.`
+      : `Invalid URL: ${spec.url || '(empty)'}`;
+    return { result: errorResult(why, 0), sentHeaders: {}, missing, note: vault?.note };
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { result: errorResult('Only http/https URLs are allowed', 0), sentHeaders: {}, missing };
@@ -141,6 +162,15 @@ export async function sendRequest(
     if (row.enabled && row.key.trim()) headers.set(row.key.trim(), row.value);
   }
   applyAuth(spec, headers);
+
+  // Vault credentials fill in what the request didn't set explicitly - an
+  // Authorization header you typed yourself always wins over the vault's.
+  if (vault) {
+    for (const [k, v] of Object.entries(vault.headers)) if (!headers.has(k)) headers.set(k, v);
+    for (const [k, v] of Object.entries(vault.query)) {
+      if (!url.searchParams.has(k)) url.searchParams.set(k, v);
+    }
+  }
 
   const built = buildBody(spec, opts.files);
   if (built.contentType && !headers.has('Content-Type')) {
@@ -189,23 +219,27 @@ export async function sendRequest(
         const size = buf.byteLength;
         const truncated = size > BODY_CAP;
         const text = new TextDecoder().decode(truncated ? buf.slice(0, BODY_CAP) : buf);
+        const result: SendResult = {
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          headers: headerMap(res.headers),
+          body: text,
+          truncated,
+          size,
+          latencyMs: Date.now() - started,
+          ttfbMs,
+          redirects,
+          setCookies,
+        };
+        // Keep it around so the next request can chain off it.
+        remember(rawSpec, result);
         return {
-          result: {
-            ok: res.ok,
-            status: res.status,
-            statusText: res.statusText,
-            headers: headerMap(res.headers),
-            body: text,
-            truncated,
-            size,
-            latencyMs: Date.now() - started,
-            ttfbMs,
-            redirects,
-            setCookies,
-          },
+          result,
           sentHeaders: headerMap(headers),
           sentBody: built.preview,
           missing,
+          note: vault?.note,
         };
       }
 
@@ -239,6 +273,7 @@ export async function sendRequest(
       sentHeaders: headerMap(headers),
       sentBody: built.preview,
       missing,
+      note: vault?.note,
     };
   } finally {
     clearTimeout(timer);
@@ -279,8 +314,15 @@ function errorResult(error: string, latencyMs: number, redirects: RedirectHop[] 
 
 /** Render a request as a copy-pasteable curl command (same interpolation and
  *  auth handling as an actual send, so what you copy is what was sent). */
-export function toCurl(rawSpec: RequestSpec, vars: Record<string, string> = {}): string {
-  const { spec } = interpolateSpec(rawSpec, vars);
+export async function toCurl(
+  rawSpec: RequestSpec,
+  vars: Record<string, string> = {},
+): Promise<string> {
+  const vault =
+    rawSpec.auth?.type === 'vault' && rawSpec.auth.keyId
+      ? await resolveVaultAuth(rawSpec.auth.keyId)
+      : null;
+  const { spec } = interpolateSpec(rawSpec, buildLookup(vars, vault));
   let url: string;
   try {
     url = buildUrl(spec).toString();
@@ -294,6 +336,16 @@ export function toCurl(rawSpec: RequestSpec, vars: Record<string, string> = {}):
   applyAuth(spec, headers);
   const built = buildBody(spec);
   if (built.contentType && !headers.has('Content-Type')) headers.set('Content-Type', built.contentType);
+  if (vault) {
+    for (const [k, v] of Object.entries(vault.headers)) if (!headers.has(k)) headers.set(k, v);
+    if (Object.keys(vault.query).length) {
+      const withQuery = new URL(url);
+      for (const [k, v] of Object.entries(vault.query)) {
+        if (!withQuery.searchParams.has(k)) withQuery.searchParams.set(k, v);
+      }
+      url = withQuery.toString();
+    }
+  }
 
   const parts = [`curl -X ${spec.method.toUpperCase()} ${quote(url)}`];
   headers.forEach((v, k) => parts.push(`  -H ${quote(`${k}: ${v}`)}`));

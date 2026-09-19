@@ -24,6 +24,8 @@ const BASE = '/api/collections';
 export interface SendResponse {
   result: SendResult;
   missing: string[];
+  /** advisory from the vault (unsupported provider, freshly signed JWT, …) */
+  note?: string;
   historyId: string;
 }
 
@@ -129,6 +131,18 @@ export const clientApi = {
     }
     return fetch('/api/send', { method: 'POST', body: form }).then((r) => json<SendResponse>(r));
   },
+
+  importCurl: (text: string) =>
+    fetch(`${BASE}/import-curl`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).then((r) => json<{ spec: RequestSpec; warnings: string[] }>(r)),
+
+  chainable: () =>
+    fetch(`${BASE}/chainable`).then((r) =>
+      json<{ id: string; name: string; status: number }[]>(r),
+    ),
 
   curl: (spec: RequestSpec) =>
     fetch('/api/send/curl', {

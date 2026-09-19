@@ -197,7 +197,7 @@ Layout tetap (tab penuh):
 |---|---|---|
 | **M0** | Infra: `network_mode: host`, `ref/` diabaikan git & docker | ✅ selesai — `localhost:3000` sudah bisa diuji dari container |
 | **M1** | `collections.json` + tab request + pipeline kirim (tanpa script) + form-data/upload + cookie jar | ✅ selesai — **Apier sudah bisa dicopot** |
-| **M2** | Variabel + environment + chaining + auth dari vault + import cURL | Setara Postman harian |
+| **M2** | Variabel + environment + chaining + auth dari vault + import cURL | ✅ selesai — setara Postman harian |
 | **M3** | Sandbox QuickJS + assertion + tab Tests | |
 | **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | |
 | **M5** | Collection runner + CLI + reporter | Bisa dipakai di CI |
@@ -237,6 +237,37 @@ Keputusan kecil yang diambil saat implementasi:
 - **Shortcut pakai Alt, bukan Ctrl.** `Ctrl+T`/`Ctrl+W` milik browser dan tidak bisa dicegat dari halaman, jadi: `Alt+T` tab baru, `Alt+W` tutup, `Alt+D` duplikat, `Alt+L` fokus URL. Yang tetap Ctrl: `Ctrl+Enter` kirim, `Ctrl+S` simpan.
 - **Variabel `{{...}}` sudah aktif lebih awal** (environment + `{{$uuid}}`/`{{$timestamp}}`), karena biayanya kecil dan tab Environment butuh itu. Auth dari vault tetap M2.
 - **Response biner** (gambar/pdf) masih di-decode sebagai teks; preview biner menyusul.
+
+## 10c. Status M2 (selesai 2026-09-19)
+
+| Bagian | File | Bukti |
+|---|---|---|
+| Auth dari vault | `server/core/vault-auth.ts` | key DeepSeek → `Authorization: Bearer sk-60d0931d…` sampai ke target |
+| Variabel dari vault | idem | `{{vault.baseURL}}/models` → 200 dari DeepSeek, daftar model kembali |
+| Chaining antar request | `server/core/responses.ts` | `{{res.Login.body.query.token}}` → `abc123xyz`, `{{res.Login.status}}` → `200` |
+| Import cURL | `server/core/import-curl.ts` | 4 bentuk perintah diuji: devtools JSON, `-F` + `-u` + `--max-time`, form + line-continuation + `-k`, dan `-G --data-urlencode` |
+| Pesan variabel kosong | `server/core/send.ts` | `{{baseURL}}` tak terdefinisi → "Undefined variable: baseURL — set it in the Environment panel…" (bukan lagi "Invalid URL") |
+| UI | `ui/src/client/*` | tombol **cURL** di tab bar (Alt+I), picker key di tab Auth, baris "chain from: …" di footer |
+
+Skema auth per provider mengikuti adapter yang sudah ada, jadi request dari client
+autentikasinya identik dengan probe di tab Vault:
+
+| Provider | Cara |
+|---|---|
+| openai, deepseek, openrouter, deepinfra, openai-compat, perplexity, core | `Authorization: Bearer <apiKey>` |
+| anthropic | `x-api-key` + `anthropic-version: 2023-06-01` |
+| gemini | query `?key=<apiKey>` |
+| elevenlabs | `xi-api-key` |
+| zai | JWT HS256 baru tiap kirim (`signZAIJWT`, berlaku 1 jam) |
+| cloudflare-r2, do-spaces | tidak didukung dari raw request (butuh SigV4) — panel memberi catatan, bukan diam-diam gagal |
+
+Keputusan saat implementasi:
+
+- **Header yang kamu tulis sendiri menang** atas header dari vault. Vault hanya mengisi yang kosong, jadi override manual tetap mungkin.
+- **Field rahasia tidak pernah jadi variabel.** `{{vault.*}}` hanya membuka field non-rahasia (`baseURL`, `model`, `endpoint`, `bucket`, …); `apiKey`/`apiSecret` sengaja tidak diekspos supaya tidak ikut ke preview history.
+- **Registry response untuk chaining disimpan di memori saja** (maks. 50 request terakhir). Token hasil chaining berumur pendek, dan menyimpan body response ke disk sama saja dengan menyimpan rahasia ke disk. Restart container = jalankan ulang request sumbernya.
+- **`{{res.<ref>...}}` menerima nama atau id request**, dengan path bebas: `body.a.0.b`, `headers.content-type`, `status`, `latencyMs`.
+- **Import cURL tidak langsung menyimpan** — hasilnya dibuka sebagai tab supaya bisa diperiksa dulu; flag yang tidak didukung jadi warning, bukan hilang diam-diam.
 
 ## 11. Yang masih terbuka
 

@@ -19,6 +19,8 @@ import {
 } from '../core/collections.ts';
 import { listHistory, clearHistory } from '../core/req-history.ts';
 import { listCookies, clearCookies } from '../core/cookies.ts';
+import { importCurl } from '../core/import-curl.ts';
+import { listRemembered } from '../core/responses.ts';
 import { emptyRequest } from '../../shared/collections.ts';
 import type { EnvironmentDef, RequestSpec } from '../../shared/collections.ts';
 
@@ -114,6 +116,20 @@ collectionsRouter.delete('/history', async (c) => {
 });
 
 collectionsRouter.get('/cookies', async (c) => c.json(await listCookies()));
+
+// ─── import & chaining ──────────────────────────────────────────────────────
+
+/** POST /api/collections/import-curl - parse a curl command into a request.
+ *  Nothing is saved; the UI opens the result in a tab so it can be checked. */
+collectionsRouter.post('/import-curl', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+  if (!body.text?.trim()) return c.json({ error: 'Paste a curl command first' }, 400);
+  return c.json(importCurl(body.text));
+});
+
+/** GET /api/collections/chainable - requests whose last response can be
+ *  referenced with {{res.<name>.…}} in this session. */
+collectionsRouter.get('/chainable', (c) => c.json(listRemembered()));
 
 collectionsRouter.delete('/cookies', async (c) => {
   await clearCookies(c.req.query('domain') || undefined);

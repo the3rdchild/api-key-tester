@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { ImportCurlDialog } from './ImportCurlDialog.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
@@ -14,6 +15,7 @@ const SPLIT_KEY = 'key-tester.client.split';
 export function ClientView() {
   const state = useClient();
   const [toast, setToast] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [split, setSplit] = useState<number>(() => {
     const saved = Number(localStorage.getItem(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
@@ -61,6 +63,11 @@ export function ClientView() {
       if (e.altKey && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         document.getElementById('req-url')?.focus();
+        return;
+      }
+      if (e.altKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        setImportOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -141,8 +148,17 @@ export function ClientView() {
             <i className="fa-solid fa-plus text-xs" />
           </button>
 
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            title="Import cURL (Alt+I)"
+            className="h-7 shrink-0 rounded px-2 text-xs text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
+          >
+            <i className="fa-solid fa-terminal text-xs" /> cURL
+          </button>
+
           <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
-            <span title="Alt+T new · Alt+W close · Alt+D duplicate · Ctrl+Enter send · Ctrl+S save · Alt+L focus URL">
+            <span title="Alt+T new · Alt+W close · Alt+D duplicate · Alt+I import cURL · Ctrl+Enter send · Ctrl+S save · Alt+L focus URL">
               <i className="fa-solid fa-keyboard" /> shortcuts
             </span>
             <span
@@ -161,6 +177,8 @@ export function ClientView() {
               <div style={{ width: `${split * 100}%` }} className="min-w-0">
                 <RequestPane
                   tab={active}
+                  vaultKeys={state.vaultKeys}
+                  chainable={state.chainable}
                   onSpec={(patch) => state.updateSpec(active.id, patch)}
                   onFiles={(field, files) =>
                     state.patchTab(active.id, { files: { ...active.files, [field]: files } })
@@ -188,6 +206,16 @@ export function ClientView() {
           )}
         </div>
       </div>
+
+      <ImportCurlDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(spec, warnings) => {
+          state.newTab(spec);
+          showToast(warnings.length ? `Imported with ${warnings.length} warning(s)` : 'Imported');
+          if (warnings.length) console.warn('[import-curl]', warnings);
+        }}
+      />
 
       {toast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-slate-700">

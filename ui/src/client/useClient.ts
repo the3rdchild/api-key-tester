@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { clientApi, type SendResponse } from '../lib/clientApi.ts';
+import { api } from '../lib/api.ts';
+import type { KeyEntry } from '../../../shared/types.ts';
 import { emptyRequest } from '../../../shared/collections.ts';
 import type {
   CollectionsFile,
@@ -26,6 +28,8 @@ export interface Tab {
   sending: boolean;
   result?: SendResult;
   missing?: string[];
+  /** advisory from the vault for this send */
+  note?: string;
   error?: string;
   /** multipart files live in memory only - they can't be serialised */
   files: Record<string, File[]>;
@@ -72,6 +76,8 @@ export function useClient() {
   });
   const [collections, setCollections] = useState<CollectionsFile | null>(null);
   const [history, setHistory] = useState<ReqHistoryEntry[]>([]);
+  const [vaultKeys, setVaultKeys] = useState<KeyEntry[]>([]);
+  const [chainable, setChainable] = useState<{ id: string; name: string; status: number }[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
 
   // keep the active tab pointing at something real
@@ -109,6 +115,14 @@ export function useClient() {
   useEffect(() => {
     reloadCollections().catch(() => {});
     reloadHistory().catch(() => {});
+    api
+      .listKeys()
+      .then(({ keys }) => setVaultKeys(keys))
+      .catch(() => {});
+    clientApi
+      .chainable()
+      .then(setChainable)
+      .catch(() => {});
   }, [reloadCollections, reloadHistory]);
 
   // live updates: another window (or a hand-edit of collections.json) should
@@ -235,8 +249,11 @@ export function useClient() {
           sending: false,
           result: res.result,
           missing: res.missing,
+          note: res.note,
           error: res.result.error,
         });
+        // this response can now be referenced with {{res.<name>.…}}
+        clientApi.chainable().then(setChainable).catch(() => {});
       } catch (e) {
         patchTab(tabId, {
           sending: false,
@@ -267,6 +284,8 @@ export function useClient() {
     setActiveId,
     collections,
     history,
+    vaultKeys,
+    chainable,
     wsConnected,
     newTab,
     closeTab,

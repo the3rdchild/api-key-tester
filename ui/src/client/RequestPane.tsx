@@ -10,6 +10,7 @@ import { MultipartEditor } from './MultipartEditor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import { METHODS } from '../../../shared/collections.ts';
 import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
+import type { KeyEntry } from '../../../shared/types.ts';
 import type { Tab } from './useClient.ts';
 
 type Section = 'params' | 'headers' | 'body' | 'auth' | 'settings';
@@ -25,6 +26,8 @@ const BODY_MODES: { id: BodyMode; label: string }[] = [
 
 interface Props {
   tab: Tab;
+  vaultKeys: KeyEntry[];
+  chainable: { id: string; name: string; status: number }[];
   onSpec: (patch: Partial<RequestSpec>) => void;
   onFiles: (field: string, files: File[]) => void;
   onSend: () => void;
@@ -32,7 +35,16 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-export function RequestPane({ tab, onSpec, onFiles, onSend, onSave, onToast }: Props) {
+export function RequestPane({
+  tab,
+  vaultKeys,
+  chainable,
+  onSpec,
+  onFiles,
+  onSend,
+  onSave,
+  onToast,
+}: Props) {
   const [section, setSection] = useState<Section>('params');
   const spec = tab.spec;
   const settings = spec.settings;
@@ -238,7 +250,7 @@ export function RequestPane({ tab, onSpec, onFiles, onSend, onSave, onToast }: P
           </div>
         )}
 
-        {section === 'auth' && <AuthEditor spec={spec} onSpec={onSpec} />}
+        {section === 'auth' && <AuthEditor spec={spec} onSpec={onSpec} vaultKeys={vaultKeys} />}
 
         {section === 'settings' && (
           <div className="grid max-w-md gap-3 text-sm">
@@ -289,6 +301,21 @@ export function RequestPane({ tab, onSpec, onFiles, onSend, onSave, onToast }: P
           Undefined variable{tab.missing.length > 1 ? 's' : ''}: {tab.missing.join(', ')}
         </p>
       )}
+
+      {tab.note && (
+        <p className="shrink-0 border-t border-sky-200 bg-sky-50 px-3 py-1 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+          <i className="fa-solid fa-circle-info" /> {tab.note}
+        </p>
+      )}
+
+      {chainable.length > 0 && (
+        <p
+          className="shrink-0 truncate border-t border-slate-200 px-3 py-1 text-[11px] text-slate-400 dark:border-slate-800"
+          title={chainable.map((c) => `{{res.${c.name}.body.…}}  (${c.status})`).join('\n')}
+        >
+          <i className="fa-solid fa-link" /> chain from: {chainable.map((c) => c.name).join(', ')}
+        </p>
+      )}
     </section>
   );
 }
@@ -296,9 +323,11 @@ export function RequestPane({ tab, onSpec, onFiles, onSend, onSave, onToast }: P
 function AuthEditor({
   spec,
   onSpec,
+  vaultKeys,
 }: {
   spec: RequestSpec;
   onSpec: (patch: Partial<RequestSpec>) => void;
+  vaultKeys: KeyEntry[];
 }) {
   const auth = spec.auth;
   const set = (patch: Partial<RequestSpec['auth']>) => onSpec({ auth: { ...auth, ...patch } });
@@ -313,11 +342,42 @@ function AuthEditor({
           className="h-8 rounded border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-800"
         >
           <option value="none">No auth</option>
+          <option value="vault">From key vault</option>
           <option value="bearer">Bearer token</option>
           <option value="basic">Basic</option>
           <option value="header">Custom header</option>
         </select>
       </Field>
+
+      {auth.type === 'vault' && (
+        <>
+          <Field label="Key" htmlFor="auth-key">
+            <select
+              id="auth-key"
+              value={auth.keyId ?? ''}
+              onChange={(e) => set({ keyId: e.target.value })}
+              className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              <option value="">Choose a key…</option>
+              {vaultKeys
+                .filter((k) => k.testable)
+                .map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.provider}
+                    {k.label ? ` · ${k.label}` : ''}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <p className="text-xs text-slate-400">
+            The key's own scheme is applied on send — Bearer for the OpenAI family,{' '}
+            <code className="font-mono">x-api-key</code> for Anthropic, a query param for Gemini, a
+            freshly signed JWT for z.ai. Its non-secret fields are available as variables, e.g.{' '}
+            <code className="font-mono">{'{{vault.baseURL}}'}</code> and{' '}
+            <code className="font-mono">{'{{vault.model}}'}</code>.
+          </p>
+        </>
+      )}
 
       {auth.type === 'bearer' && (
         <Field label="Token" htmlFor="auth-token">
@@ -375,10 +435,13 @@ function AuthEditor({
         </>
       )}
 
-      <p className="text-xs text-slate-400">
-        Auth straight from the key vault lands in M2 — for now reference a variable, e.g.{' '}
-        <code className="font-mono">{'{{token}}'}</code>.
-      </p>
+      {auth.type !== 'vault' && (
+        <p className="text-xs text-slate-400">
+          Values accept variables: <code className="font-mono">{'{{token}}'}</code> from the
+          environment, or <code className="font-mono">{'{{res.Login.body.access_token}}'}</code> to
+          chain off an earlier response.
+        </p>
+      )}
     </div>
   );
 }

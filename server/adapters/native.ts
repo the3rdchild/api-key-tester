@@ -196,7 +196,7 @@ export const zai: Adapter = {
     }),
 };
 
-async function signZAIJWT(id: string, secret: string): Promise<string> {
+export async function signZAIJWT(id: string, secret: string): Promise<string> {
   const enc = new TextEncoder();
   const header = { alg: 'HS256', sign_type: 'SIGN' };
   const now = Math.floor(Date.now() / 1000);

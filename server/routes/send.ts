@@ -63,6 +63,7 @@ sendRouter.post('/', async (c) => {
   return c.json({
     result: outcome.result,
     missing: outcome.missing,
+    note: outcome.note,
     historyId: entry.id,
   });
 });
@@ -72,5 +73,5 @@ sendRouter.post('/curl', async (c) => {
   const payload = (await c.req.json().catch(() => ({}))) as SendPayload;
   if (!payload?.spec) return c.json({ error: 'Missing spec' }, 400);
   const vars = { ...(await activeEnvVars()), ...(payload.vars ?? {}) };
-  return c.json({ curl: toCurl(payload.spec, vars) });
+  return c.json({ curl: await toCurl(payload.spec, vars) });
 });
