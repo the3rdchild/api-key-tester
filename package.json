@@ -11,6 +11,7 @@
     "build": "vite build",
     "start": "bun server/index.ts",
     "parse": "bun scripts/parse-once.ts",
+    "benchmark": "bun scripts/benchmark.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

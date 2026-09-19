@@ -16,6 +16,7 @@ import { testRouter } from './routes/test.ts';
 import { exportRouter } from './routes/export.ts';
 import { importRouter, previewImportHandler } from './routes/import.ts';
 import { rawRouter } from './routes/raw.ts';
+import { benchmarkRouter } from './routes/benchmark.ts';
 import { addSocket, broadcast, socketCount } from './routes/ws.ts';
 import { isMirrorEnabled, loadStore, setChangeEmitter, setMarkSelfWriteHook } from './core/store.ts';
 import { markSelfWrite, setExternalChangeListener, startWatcher } from './core/watcher.ts';
@@ -45,6 +46,7 @@ app.route('/api/test', testRouter);
 app.route('/api/export', exportRouter);
 app.route('/api/import', importRouter);
 app.route('/api/raw', rawRouter);
+app.route('/api/benchmark', benchmarkRouter);
 
 // POST /api/test-all - batch (lives at root /api because testRouter is mounted
 // at /api/test; keeping this separate avoids a /:id collision).

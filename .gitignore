@@ -13,3 +13,8 @@ history.jsonl
 # temp/runtime
 *.tmp
 *.swp
+
+# benchmark test
+benchmark/
+benchmark/benchmark.xlsx
+benchmark/List of LLM Models.xlsx

@@ -20,6 +20,26 @@ bun run build         # vite build → ui/dist
 bun start             # → http://127.0.0.1:8788 (serves UI + API)
 ```
 
+### Docker
+
+```bash
+docker compose up -d      # → http://127.0.0.1:8788 (auto-restarts on boot)
+docker compose logs -f
+docker compose down
+```
+
+- **Loopback only.** The port is published on `127.0.0.1` because `store.json` holds real keys and the panel has no auth. For remote access, tunnel port 8788 through the panel in `../port-forward`.
+- **Data stays on the host.** The whole project dir is bind-mounted, so `store.json`, `history.jsonl`, `keys.md` and `benchmark/` are the same files you edit locally. Bun runs the TypeScript as-is, so a server code change only needs `docker compose restart` - no rebuild.
+- **UI build runs at container start**, but only when `ui/dist` is missing or older than `ui/src` - so an edited UI is picked up by `docker compose restart` too.
+- **`node_modules` comes from a named volume** (installed inside the image, masking the host folder). After changing `package.json`:
+
+  ```bash
+  docker compose build && docker compose up -d --force-recreate
+  docker volume rm key-tester_node_modules   # only if you want a clean reinstall
+  ```
+
+- **Env overrides**: `PORT` (8788), `HOST` (must stay `0.0.0.0` inside the container), `TZ`, `KEYTESTER_MIRROR_MD=1` to mirror UI edits back into `keys.md`.
+
 ## What it does
 
 - **Tests keys** via cheap probes (GET `/models`, `HeadBucket`, etc.) - costs nothing on most providers

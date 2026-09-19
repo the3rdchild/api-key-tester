@@ -1,0 +1,18 @@
+# store.json memuat API key asli - jangan pernah ikut ke dalam layer image.
+store.json
+history.jsonl
+keys.md
+
+# Masuk lewat bind mount / named volume saat runtime.
+node_modules
+ui/dist
+
+# Tidak dipakai saat build.
+.git
+docs
+benchmark
+scripts
+*.log
+*.xlsx
+README.md
+dev.mjs
