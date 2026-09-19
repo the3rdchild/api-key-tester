@@ -40,6 +40,23 @@ docker compose down
 
 - **Env overrides**: `PORT` (8788), `HOST` (must stay `0.0.0.0` inside the container), `TZ`, `KEYTESTER_MIRROR_MD=1` to mirror UI edits back into `keys.md`.
 
+## API client
+
+The app opens on the **API client** (the key vault is the second tab). It is the Postman/Apier replacement described in [`docs/api-client-plan.md`](docs/api-client-plan.md):
+
+- **Request tabs** — `Alt+T` new, `Alt+W` close, `Alt+D` duplicate, so testing a GET and a POST no longer means two browser tabs
+- **Fixed 3-pane layout** — collections/history sidebar, request, response; the divider is draggable and its position is remembered
+- **Bodies** — JSON / text / XML / form-urlencoded / multipart with real file upload (files are picked in the browser and streamed through the server, so nothing is copied into the project)
+- **Per-request settings** — timeout, follow-redirects, max redirects, cookie jar on/off
+- **Cookie jar** — `Set-Cookie` is captured and replayed, so a login survives across requests
+- **Variables** — `{{name}}` from the active environment, plus `{{$uuid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`
+- **History** — last 200 requests, with `Authorization`-style headers and any vault credential redacted before they are written
+- **Copy as curl** — exactly what was sent, auth included
+
+Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth (M2) will reference a key by id, never its value.
+
+Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar.
+
 ## What it does
 
 - **Tests keys** via cheap probes (GET `/models`, `HeadBucket`, etc.) - costs nothing on most providers

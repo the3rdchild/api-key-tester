@@ -1,5 +1,8 @@
 // Shared types used by both server and UI.
 // Keep this file dependency-free so it can be imported anywhere.
+// (The API-client domain - collections, requests - lives in collections.ts.)
+
+import type { ReqHistoryEntry } from './collections.ts';
 
 export type Provider =
   // OpenAI-compatible family
@@ -103,7 +106,9 @@ export type WSEvent =
   | { type: 'test:started'; keyId: string }
   | { type: 'test:done'; keyId: string; status: TestStatus }
   | { type: 'store:changed'; keys: KeyEntry[] }
-  | { type: 'file:changed'; path: string };
+  | { type: 'file:changed'; path: string }
+  | { type: 'collections:changed' }
+  | { type: 'req-history:appended'; entry: ReqHistoryEntry };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {
   untested: { label: 'Untested', color: 'gray' },

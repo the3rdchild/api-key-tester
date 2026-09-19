@@ -196,7 +196,7 @@ Layout tetap (tab penuh):
 | # | Isi | Hasil yang bisa dipakai |
 |---|---|---|
 | **M0** | Infra: `network_mode: host`, `ref/` diabaikan git & docker | ✅ selesai — `localhost:3000` sudah bisa diuji dari container |
-| **M1** | `collections.json` + tab request + pipeline kirim (tanpa script) + form-data/upload + cookie jar | **Apier sudah bisa dicopot** |
+| **M1** | `collections.json` + tab request + pipeline kirim (tanpa script) + form-data/upload + cookie jar | ✅ selesai — **Apier sudah bisa dicopot** |
 | **M2** | Variabel + environment + chaining + auth dari vault + import cURL | Setara Postman harian |
 | **M3** | Sandbox QuickJS + assertion + tab Tests | |
 | **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | |
@@ -216,6 +216,27 @@ Layout tetap (tab penuh):
 Keduanya **acuan baca**, bukan dependensi. Kode yang benar-benar disalin harus dicatat asal + lisensinya di file terkait.
 
 ---
+
+## 10b. Status M1 (selesai 2026-09-19)
+
+Yang sudah jalan dan terukur:
+
+| Bagian | File | Bukti |
+|---|---|---|
+| Skema + penyimpanan koleksi | `server/core/collections.ts`, `shared/collections.ts` | folder + request + duplicate lewat REST, tulis atomik (tmp → rename) |
+| Pipeline kirim | `server/core/send.ts`, `server/routes/send.ts` | JSON body 200 (12 ms), redirect 302 → 200 dengan rantai hop tercatat, timeout 600 ms berhenti di 604 ms |
+| Multipart + upload file | idem | target menerima `note=catatan` + `berkas` (21 B, text/plain) |
+| Cookie jar | `server/core/cookies.ts` | `Set-Cookie` tertangkap, request berikutnya mengirim `session=abc123` |
+| History + redaksi | `server/core/req-history.ts` | 200 entri, `authorization` tersimpan sebagai `«redacted»` |
+| Copy as curl | `toCurl()` di `send.ts` | perintah curl lengkap dengan header auth hasil interpolasi |
+| UI 3 pane + tab | `ui/src/client/*` | render terverifikasi lewat screenshot headless |
+
+Keputusan kecil yang diambil saat implementasi:
+
+- **Belum pakai CodeMirror.** Editor body masih `textarea` monospace + tombol Format JSON. CodeMirror ditunda ke M3 (saat editor script benar-benar perlu) supaya M1 tidak menambah dependensi UI baru.
+- **Shortcut pakai Alt, bukan Ctrl.** `Ctrl+T`/`Ctrl+W` milik browser dan tidak bisa dicegat dari halaman, jadi: `Alt+T` tab baru, `Alt+W` tutup, `Alt+D` duplikat, `Alt+L` fokus URL. Yang tetap Ctrl: `Ctrl+Enter` kirim, `Ctrl+S` simpan.
+- **Variabel `{{...}}` sudah aktif lebih awal** (environment + `{{$uuid}}`/`{{$timestamp}}`), karena biayanya kecil dan tab Environment butuh itu. Auth dari vault tetap M2.
+- **Response biner** (gambar/pdf) masih di-decode sebagai teks; preview biner menyusul.
 
 ## 11. Yang masih terbuka
 

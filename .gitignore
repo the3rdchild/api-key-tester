@@ -20,3 +20,8 @@ benchmark/benchmark.xlsx
 benchmark/List of LLM Models.xlsx
 # referensi read-only (clone dangkal, bukan bagian build)
 ref/
+
+# API client runtime artifacts
+collections.json
+cookies.json
+requests-history.jsonl

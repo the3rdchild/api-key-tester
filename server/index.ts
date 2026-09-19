@@ -16,9 +16,12 @@ import { testRouter } from './routes/test.ts';
 import { exportRouter } from './routes/export.ts';
 import { importRouter, previewImportHandler } from './routes/import.ts';
 import { rawRouter } from './routes/raw.ts';
+import { collectionsRouter } from './routes/collections.ts';
+import { sendRouter } from './routes/send.ts';
 import { benchmarkRouter } from './routes/benchmark.ts';
 import { addSocket, broadcast, socketCount } from './routes/ws.ts';
 import { isMirrorEnabled, loadStore, setChangeEmitter, setMarkSelfWriteHook } from './core/store.ts';
+import { loadCollections, setCollectionsChangeEmitter } from './core/collections.ts';
 import { markSelfWrite, setExternalChangeListener, startWatcher } from './core/watcher.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
 import type { WSEvent } from '../shared/types.ts';
@@ -46,6 +49,8 @@ app.route('/api/test', testRouter);
 app.route('/api/export', exportRouter);
 app.route('/api/import', importRouter);
 app.route('/api/raw', rawRouter);
+app.route('/api/collections', collectionsRouter);
+app.route('/api/send', sendRouter);
 app.route('/api/benchmark', benchmarkRouter);
 
 // POST /api/test-all - batch (lives at root /api because testRouter is mounted
@@ -74,6 +79,10 @@ setChangeEmitter(() => {
     .then((keys) => broadcast({ type: 'store:changed', keys } satisfies WSEvent))
     .catch((e) => console.warn('[ws] store:changed broadcast failed:', e));
 });
+
+// collections.json changed (any write goes through core/collections.ts) →
+// tell every open tab so two windows never drift apart.
+setCollectionsChangeEmitter(() => broadcast({ type: 'collections:changed' }));
 
 setExternalChangeListener((path) => {
   broadcast({ type: 'file:changed', path } satisfies WSEvent);
@@ -123,6 +132,7 @@ const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? '127.0.0.1';
 
 await loadStore();
+await loadCollections();
 startWatcher();
 
 const server = Bun.serve<undefined>({
