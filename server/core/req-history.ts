@@ -94,11 +94,18 @@ export async function record(
       bodyPreview: preview(sentBody, secrets),
     },
     responsePreview: preview(result.body, secrets),
+    checks: countChecks(result),
   };
 
   await appendFile(REQ_HISTORY_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
   await trim();
   return entry;
+}
+
+function countChecks(result: SendResult): { passed: number; total: number } | undefined {
+  const all = [...(result.tests ?? []), ...(result.assertions ?? [])];
+  if (all.length === 0) return undefined;
+  return { passed: all.filter((c) => c.passed).length, total: all.length };
 }
 
 /** Keep only the newest MAX_ENTRIES lines. */

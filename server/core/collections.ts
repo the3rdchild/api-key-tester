@@ -182,6 +182,21 @@ export async function setActiveEnvironment(id: string | null): Promise<void> {
   });
 }
 
+/** Merge variables a script wrote with bru.setEnvVar into the active
+ *  environment. Unlike bru.setVar (session-only) these are meant to stick. */
+export async function applyEnvVarChanges(vars: Record<string, string>): Promise<void> {
+  if (Object.keys(vars).length === 0) return;
+  await mutate((file) => {
+    const env = file.environments.find((e) => e.id === file.activeEnvId);
+    if (!env) return;
+    for (const [key, value] of Object.entries(vars)) {
+      const row = env.vars.find((v) => v.key === key);
+      if (row) row.value = value;
+      else env.vars.push({ key, value, enabled: true });
+    }
+  });
+}
+
 export async function activeEnvVars(): Promise<Record<string, string>> {
   const file = await loadCollections();
   const env = file.environments.find((e) => e.id === file.activeEnvId);

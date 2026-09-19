@@ -101,6 +101,16 @@ export function Sidebar({ state, onToast }: Props) {
                   {entry.method}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{entry.url}</span>
+                {entry.checks && (
+                  <span
+                    className={`shrink-0 font-mono text-[10px] ${
+                      entry.checks.passed === entry.checks.total ? 'text-emerald-600' : 'text-red-500'
+                    }`}
+                    title={`${entry.checks.passed} of ${entry.checks.total} checks passed`}
+                  >
+                    {entry.checks.passed}/{entry.checks.total}
+                  </span>
+                )}
                 <span
                   className={`shrink-0 font-mono ${
                     entry.error

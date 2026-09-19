@@ -4,11 +4,11 @@
 // in this column, and its status line keeps a fixed height whether it shows a
 // result, an error or nothing yet.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { SendResult } from '../../../shared/collections.ts';
 
-type View = 'pretty' | 'raw' | 'headers' | 'cookies';
+type View = 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests';
 
 interface Props {
   result?: SendResult;
@@ -28,6 +28,23 @@ export function ResponsePane({ result, error, sending }: Props) {
       return result.body;
     }
   }, [result?.body]);
+
+  const checks = [
+    ...(result?.tests ?? []).map((t) => ({ label: t.name, passed: t.passed, detail: t.error })),
+    ...(result?.assertions ?? []).map((a) => ({
+      label: `${a.source} ${a.op}${a.value ? ` ${a.value}` : ''}`,
+      passed: a.passed,
+      detail: a.error ?? (a.passed ? undefined : `actual: ${a.actual}`),
+    })),
+  ];
+  const passed = checks.filter((c) => c.passed).length;
+  const hasDiagnostics = checks.length > 0 || (result?.logs?.length ?? 0) > 0 || !!result?.scriptError;
+
+  // A fresh response may carry no tests at all - don't leave the pane parked
+  // on a tab that no longer exists.
+  useEffect(() => {
+    if (view === 'tests' && !hasDiagnostics) setView('pretty');
+  }, [view, hasDiagnostics]);
 
   const copy = async (text: string) => {
     try {
@@ -78,6 +95,31 @@ export function ResponsePane({ result, error, sending }: Props) {
                 title={result.redirects.map((r) => `${r.status} → ${r.to}`).join('\n')}
               />
             )}
+            {checks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setView('tests')}
+                title="Show test results"
+                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                  passed === checks.length
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                    : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200'
+                }`}
+              >
+                <i className={`fa-solid ${passed === checks.length ? 'fa-check' : 'fa-xmark'}`} />{' '}
+                {passed}/{checks.length} tests
+              </button>
+            )}
+            {result.scriptError && (
+              <button
+                type="button"
+                onClick={() => setView('tests')}
+                title={result.scriptError}
+                className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+              >
+                <i className="fa-solid fa-triangle-exclamation" /> script
+              </button>
+            )}
             {result.truncated && (
               <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 truncated
@@ -102,7 +144,7 @@ export function ResponsePane({ result, error, sending }: Props) {
           aria-label="Response views"
           className="flex shrink-0 gap-1 border-b border-slate-200 px-2 dark:border-slate-800"
         >
-          {(['pretty', 'raw', 'headers', 'cookies'] as View[]).map((id) => (
+          {(['pretty', 'raw', 'headers', 'cookies', ...(hasDiagnostics ? (['tests'] as View[]) : [])] as View[]).map((id) => (
             <button
               key={id}
               role="tab"
@@ -121,6 +163,11 @@ export function ResponsePane({ result, error, sending }: Props) {
                   {Object.keys(result.headers).length}
                 </span>
               )}
+              {id === 'tests' && checks.length > 0 && (
+                <span className="ml-1 text-[10px] text-slate-400">
+                  {passed}/{checks.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -130,6 +177,52 @@ export function ResponsePane({ result, error, sending }: Props) {
         {result && !error && view === 'pretty' && <Body text={pretty} wrap={wrap} />}
         {result && !error && view === 'raw' && <Body text={result.body} wrap={wrap} />}
         {result && !error && view === 'headers' && <HeaderTable headers={result.headers} />}
+        {result && !error && view === 'tests' && (
+          <div className="p-3 text-xs">
+            {result.scriptError && (
+              <p className="mb-3 whitespace-pre-wrap rounded bg-amber-50 p-2 font-mono text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                {result.scriptError}
+              </p>
+            )}
+
+            {checks.length === 0 && !result.scriptError && (
+              <p className="text-slate-400">
+                No tests ran. Add assertions in the Tests tab, or call{' '}
+                <code className="font-mono">test()</code> from a post-response script.
+              </p>
+            )}
+
+            <ul className="grid gap-1">
+              {checks.map((c, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <i
+                    className={`fa-solid mt-0.5 ${
+                      c.passed ? 'fa-circle-check text-emerald-500' : 'fa-circle-xmark text-red-500'
+                    }`}
+                  />
+                  <span className="min-w-0">
+                    <span className="font-mono">{c.label}</span>
+                    {c.detail && (
+                      <span className="block break-all text-[11px] text-slate-500">{c.detail}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {(result.logs?.length ?? 0) > 0 && (
+              <>
+                <h3 className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  console
+                </h3>
+                <pre className="whitespace-pre-wrap rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-slate-800">
+                  {result.logs!.join('\n')}
+                </pre>
+              </>
+            )}
+          </div>
+        )}
+
         {result && !error && view === 'cookies' && (
           <div className="p-3 font-mono text-xs">
             {result.setCookies.length === 0 ? (

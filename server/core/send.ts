@@ -10,7 +10,15 @@ import { chainLookups, fromRecord, interpolateSpec, type VarLookup } from './var
 import { cookieHeaderFor, captureSetCookies } from './cookies.ts';
 import { remember, responseLookup } from './responses.ts';
 import { resolveVaultAuth, type VaultAuth } from './vault-auth.ts';
-import type { RedirectHop, RequestSpec, SendResult } from '../../shared/collections.ts';
+import { runScript, type ScriptOutcome } from './script.ts';
+import { runAssertions } from './assert.ts';
+import { allRuntimeVars, runtimeLookup, setRuntimeVars } from './runtime-vars.ts';
+import type {
+  RedirectHop,
+  RequestSpec,
+  SendResult,
+  TestResult,
+} from '../../shared/collections.ts';
 
 /** Body bytes kept in the response payload; the full size is still reported. */
 const BODY_CAP = 1024 * 1024;
@@ -24,9 +32,12 @@ export interface SendOptions {
   vars?: Record<string, string>;
 }
 
-/** env/runtime vars → chained responses → vault fields. First hit wins. */
+/** Script-set vars → environment → chained responses → vault fields.
+ *  First hit wins; a value a script just set beats a stale one in the
+ *  environment, which is the whole point of writing the script. */
 function buildLookup(vars: Record<string, string> | undefined, vault: VaultAuth | null): VarLookup {
   return chainLookups(
+    runtimeLookup(),
     fromRecord(vars ?? {}),
     responseLookup(),
     vault ? fromRecord(vault.vars) : undefined,
@@ -42,6 +53,8 @@ export interface SendOutcome {
   missing: string[];
   /** advisory from the vault (unsupported provider, freshly signed JWT, …) */
   note?: string;
+  /** bru.setEnvVar writes - the caller persists them into collections.json */
+  envVars?: Record<string, string>;
 }
 
 function buildUrl(spec: RequestSpec): URL {
@@ -183,11 +196,52 @@ export async function sendRequest(
 
   const redirects: RedirectHop[] = [];
   const setCookies: string[] = [];
-  const started = Date.now();
 
   let method = spec.method.toUpperCase();
   let body = built.body;
   let current = url;
+
+  // ─── pre-request script ───────────────────────────────────────────────────
+  const logs: string[] = [];
+  const tests: TestResult[] = [];
+  const envWrites: Record<string, string> = {};
+  let scriptError: string | undefined;
+
+  if (spec.scripts?.pre?.trim()) {
+    const pre = await runScript(spec.scripts.pre, {
+      phase: 'pre',
+      req: {
+        method,
+        url: current.toString(),
+        headers: headerMap(headers),
+        body: typeof body === 'string' ? body : undefined,
+      },
+      vars: { ...(opts.vars ?? {}), ...allRuntimeVars() },
+      envVars: { ...(opts.vars ?? {}) },
+    });
+    collect(pre, logs, tests, envWrites);
+    if (pre.error) scriptError = `pre-request: ${pre.error}`;
+
+    // Apply what the script changed. A multipart body is not replaceable -
+    // its bytes were already assembled - so req.body is ignored for it.
+    if (pre.req) {
+      method = (pre.req.method || method).toUpperCase();
+      if (pre.req.url && pre.req.url !== current.toString()) {
+        try {
+          current = new URL(pre.req.url);
+        } catch {
+          scriptError = `pre-request: script set an invalid url (${pre.req.url})`;
+        }
+      }
+      if (pre.req.headers) {
+        for (const key of [...headers.keys()]) headers.delete(key);
+        for (const [k, v] of Object.entries(pre.req.headers)) if (k) headers.set(k, v);
+      }
+      if (typeof pre.req.body === 'string' && typeof body === 'string') body = pre.req.body;
+    }
+  }
+
+  const started = Date.now();
 
   try {
     for (let hop = 0; ; hop++) {
@@ -232,6 +286,44 @@ export async function sendRequest(
           redirects,
           setCookies,
         };
+        // ─── post-response script + assertions ───────────────────────────
+        if (spec.scripts?.post?.trim()) {
+          const post = await runScript(spec.scripts.post, {
+            phase: 'post',
+            req: {
+              method,
+              url: current.toString(),
+              headers: headerMap(headers),
+              body: typeof body === 'string' ? body : undefined,
+            },
+            res: {
+              status: result.status,
+              statusText: result.statusText,
+              headers: result.headers,
+              body: result.body,
+              json: safeJson(result.body),
+              latencyMs: result.latencyMs,
+              size: result.size,
+            },
+            vars: { ...(opts.vars ?? {}), ...allRuntimeVars() },
+            envVars: { ...(opts.vars ?? {}) },
+          });
+          collect(post, logs, tests, envWrites);
+          if (post.error) scriptError = `post-response: ${post.error}`;
+        }
+
+        result.tests = tests;
+        result.assertions = runAssertions(spec.assertions, {
+          status: result.status,
+          statusText: result.statusText,
+          headers: result.headers,
+          body: result.body,
+          latencyMs: result.latencyMs,
+          size: result.size,
+        });
+        result.logs = logs;
+        result.scriptError = scriptError;
+
         // Keep it around so the next request can chain off it.
         remember(rawSpec, result);
         return {
@@ -240,6 +332,7 @@ export async function sendRequest(
           sentBody: built.preview,
           missing,
           note: vault?.note,
+          envVars: envWrites,
         };
       }
 
@@ -274,9 +367,32 @@ export async function sendRequest(
       sentBody: built.preview,
       missing,
       note: vault?.note,
+      envVars: envWrites,
     };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Fold one script run into the accumulated logs/tests/env writes. */
+function collect(
+  outcome: ScriptOutcome,
+  logs: string[],
+  tests: TestResult[],
+  envWrites: Record<string, string>,
+): void {
+  logs.push(...outcome.logs);
+  tests.push(...outcome.tests);
+  Object.assign(envWrites, outcome.envVars);
+  // bru.setVar values stay available to later requests in this session
+  setRuntimeVars(outcome.vars);
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }
 

@@ -56,6 +56,43 @@ export interface RequestSettings {
   useCookieJar: boolean;
 }
 
+export type AssertOp =
+  | 'eq'
+  | 'ne'
+  | 'lt'
+  | 'lte'
+  | 'gt'
+  | 'gte'
+  | 'contains'
+  | 'notContains'
+  | 'matches'
+  | 'exists'
+  | 'notExists';
+
+export interface Assertion {
+  /** status | statusText | latencyMs | size | body | headers.<name> | $.a.b.0 */
+  source: string;
+  op: AssertOp;
+  value?: string;
+  enabled?: boolean;
+}
+
+export interface AssertionResult {
+  source: string;
+  op: AssertOp;
+  value?: string;
+  actual: string;
+  passed: boolean;
+  error?: string;
+}
+
+/** One test() call from a script. */
+export interface TestResult {
+  name: string;
+  passed: boolean;
+  error?: string;
+}
+
 export interface RequestSpec {
   id: string;
   name: string;
@@ -66,9 +103,8 @@ export interface RequestSpec {
   auth: RequestAuth;
   body: RequestBody;
   settings: RequestSettings;
-  /** M3 - kept optional so files written now stay valid later */
   scripts?: { pre: string; post: string };
-  assertions?: unknown[];
+  assertions?: Assertion[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -122,6 +158,14 @@ export interface SendResult {
   setCookies: string[];
   /** set when the request never completed (timeout, DNS, TLS, …) */
   error?: string;
+  /** test() calls from the post-response script */
+  tests?: TestResult[];
+  /** declarative assertions from the Tests tab */
+  assertions?: AssertionResult[];
+  /** console.log output from both script phases */
+  logs?: string[];
+  /** a script threw or timed out (distinct from a failing test) */
+  scriptError?: string;
 }
 
 export interface ReqHistoryEntry {
@@ -138,6 +182,8 @@ export interface ReqHistoryEntry {
   /** redacted snapshot - enough to replay, never enough to leak a token */
   request: { headers: Record<string, string>; bodyPreview?: string };
   responsePreview?: string;
+  /** how the tests/assertions went, when the request had any */
+  checks?: { passed: number; total: number };
 }
 
 export const DEFAULT_SETTINGS: RequestSettings = {

@@ -54,7 +54,11 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Auth from the vault** — pick a stored key in the Auth tab and the request is signed the way that provider wants it (Bearer, `x-api-key`, Gemini's query param, a freshly minted z.ai JWT). Its non-secret fields come along as variables: `{{vault.baseURL}}`, `{{vault.model}}`
 - **Chaining** — reference an earlier response anywhere: `{{res.Login.body.access_token}}`, `{{res.Login.status}}`, `{{res.Search.headers.content-type}}`. Kept in memory for the last 50 requests
 - **Import cURL** — `Alt+I` (or the cURL button), paste what devtools gave you; query strings become editable params and unsupported flags are reported, not dropped
+- **Scripts** — pre-request and post-response JavaScript in a QuickJS sandbox (no network, no filesystem, 32 MB, 5 s). `req` is mutable, `res` carries `json`, and `bru.getVar/setVar/getEnvVar/setEnvVar` move values between requests. `console.log` output lands in the response pane
+- **Tests** — `test('name', () => expect(res.status).toBe(200))` from scripts, plus declarative assertions (source · operator · value) over `status`, `latencyMs`, `size`, `headers.<name>` or a JSON path like `$.data.0.id`. Results show as a pass/fail chip on the response and as `passed/total` in history
 - **Copy as curl** — exactly what was sent, auth included
+
+Dependencies are installed **inside the container** (`docker compose exec key-tester bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec key-tester bunx tsc --noEmit`.
 
 Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth (M2) will reference a key by id, never its value.
 

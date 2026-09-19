@@ -198,7 +198,7 @@ Layout tetap (tab penuh):
 | **M0** | Infra: `network_mode: host`, `ref/` diabaikan git & docker | ✅ selesai — `localhost:3000` sudah bisa diuji dari container |
 | **M1** | `collections.json` + tab request + pipeline kirim (tanpa script) + form-data/upload + cookie jar | ✅ selesai — **Apier sudah bisa dicopot** |
 | **M2** | Variabel + environment + chaining + auth dari vault + import cURL | ✅ selesai — setara Postman harian |
-| **M3** | Sandbox QuickJS + assertion + tab Tests | |
+| **M3** | Sandbox QuickJS + assertion + tab Tests | ✅ selesai |
 | **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | |
 | **M5** | Collection runner + CLI + reporter | Bisa dipakai di CI |
 | **M6** | Khas LLM: streaming SSE + token/detik, matrix run lintas key, kolom kuota | Yang tidak dimiliki Postman |
@@ -268,6 +268,41 @@ Keputusan saat implementasi:
 - **Registry response untuk chaining disimpan di memori saja** (maks. 50 request terakhir). Token hasil chaining berumur pendek, dan menyimpan body response ke disk sama saja dengan menyimpan rahasia ke disk. Restart container = jalankan ulang request sumbernya.
 - **`{{res.<ref>...}}` menerima nama atau id request**, dengan path bebas: `body.a.0.b`, `headers.content-type`, `status`, `latencyMs`.
 - **Import cURL tidak langsung menyimpan** — hasilnya dibuka sebagai tab supaya bisa diperiksa dulu; flag yang tidak didukung jadi warning, bukan hilang diam-diam.
+
+## 10d. Status M3 (selesai 2026-09-19)
+
+| Bagian | File | Bukti |
+|---|---|---|
+| Sandbox QuickJS | `server/core/script.ts` | `fetch`, `require`, `process`, `Bun` semuanya `undefined` di dalam sandbox |
+| Timeout script | idem | `while(true){}` dihentikan di 1001 ms dengan pesan "Script stopped after 1000 ms (infinite loop?)" |
+| Nomor baris | idem | `throw` di baris 3 dilaporkan sebagai `script:3:16`, bukan baris kode pembungkus |
+| Mutasi pre-request | `server/core/send.ts` | script mengubah method GET→POST, menambah `X-Trace`, menempel `?page=2` |
+| Chaining lewat `bru.setVar` | `server/core/runtime-vars.ts` | `sockets` & `sentAt` dari script terpakai di request berikutnya (0 variabel hilang) |
+| `bru.setEnvVar` persisten | `server/core/collections.ts` | ditulis balik ke environment aktif di `collections.json` |
+| Assertion deklaratif | `server/core/assert.ts` | 4 assertion dijalankan: status/latency/JSON path lolos, `$.nope exists` gagal dengan actual `(missing)` |
+| `test()` + `expect()` | `script.ts` | 3 test: 2 lolos, 1 sengaja gagal → "expected 418, got 200" |
+| Hasil test di history | `server/core/req-history.ts` | entri tercatat `checks: 5/7`, tampil sebagai badge di sidebar |
+| Editor CodeMirror 6 | `ui/src/client/CodeEditor.tsx` | body + dua editor script, nomor baris & highlight JS/JSON |
+
+Keputusan saat implementasi:
+
+- **QuickJS (WASM), bukan `node:vm`.** Script adalah satu-satunya tempat kode sembarang dijalankan; `node:vm` berbagi heap dengan host, sementara QuickJS punya batas memori sendiri (32 MB), interrupt handler, dan nol akses ke host. Ini juga pilihan Bruno untuk pekerjaan yang sama.
+- **Urutan variabel: script (`bru.setVar`) → environment → `{{res.…}}` → `{{vault.…}}`.** Nilai yang baru saja di-set script menang atas environment — itu justru alasan orang menulis script-nya.
+- **`bru.setVar` hidup di memori, `bru.setEnvVar` ditulis ke `collections.json`.** Yang pertama untuk token berumur pendek, yang kedua untuk konfigurasi.
+- **Assertion tetap deklaratif**, bukan script. Tiga kolom (source/operator/value) menutup kebutuhan sehari-hari, tetap bisa di-diff di `collections.json`, dan jalan dalam mikrodetik. Script tersedia untuk yang tidak tertampung.
+- **Body multipart tidak bisa diubah dari script** (byte-nya sudah dirakit sebelum script jalan) — `req.body` hanya berlaku untuk body teks.
+- **Bundle UI naik dari 234 KB ke 763 KB** (gzip 249 KB) karena CodeMirror. Untuk aplikasi lokal ini tidak berarti apa-apa; kalau nanti terasa, editor bisa di-`React.lazy`.
+
+### Catatan operasional: install dependensi
+
+`bun install` di host **mandek** di mount NTFS ini (proses tidur, 16 MB tertulis dalam 7 menit, lockfile tak tersentuh). Solusinya: install di dalam container, yang `node_modules`-nya ada di volume Docker — selesai dalam 74 detik.
+
+```bash
+docker compose exec key-tester bun install       # setelah mengubah package.json
+docker compose exec key-tester bunx tsc --noEmit # typecheck ikut di container
+```
+
+Konsekuensinya: `node_modules` di host tertinggal (tidak punya `quickjs-emscripten` maupun CodeMirror), jadi `bun run dev` dari host tidak akan jalan sampai install host berhasil. Mode container tetap penuh.
 
 ## 11. Yang masih terbuka
 

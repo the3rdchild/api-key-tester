@@ -36,11 +36,13 @@ export function KeyValueEditor({
 
   return (
     <div className="divide-y divide-slate-200 dark:divide-slate-800">
+      {/* Placeholder cells keep the header aligned with the rows below: an
+          sr-only span is absolutely positioned and would drop out of the grid. */}
       <div className="grid grid-cols-[2rem_1fr_1.5fr_2rem] gap-2 px-1 pb-1 text-[11px] uppercase tracking-wide text-slate-400">
-        <span className="sr-only">Enabled</span>
+        <span aria-hidden="true" />
         <span>Key</span>
         <span>Value</span>
-        <span className="sr-only">Remove</span>
+        <span aria-hidden="true" />
       </div>
 
       {view.map((row, i) => {

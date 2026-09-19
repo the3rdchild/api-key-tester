@@ -5,6 +5,8 @@
 
 import { useState } from 'react';
 
+import { AssertionEditor } from './AssertionEditor.tsx';
+import { CodeEditor } from './CodeEditor.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { MultipartEditor } from './MultipartEditor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
@@ -13,7 +15,7 @@ import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import type { Tab } from './useClient.ts';
 
-type Section = 'params' | 'headers' | 'body' | 'auth' | 'settings';
+type Section = 'params' | 'headers' | 'body' | 'auth' | 'scripts' | 'tests' | 'settings';
 
 const BODY_MODES: { id: BodyMode; label: string }[] = [
   { id: 'none', label: 'None' },
@@ -52,7 +54,12 @@ export function RequestPane({
   const counts = {
     params: spec.params.filter((p) => p.enabled && p.key).length,
     headers: spec.headers.filter((h) => h.enabled && h.key).length,
+    scripts: [spec.scripts?.pre, spec.scripts?.post].filter((c) => c?.trim()).length,
+    tests: (spec.assertions ?? []).filter((a) => a.enabled !== false && a.source).length,
   };
+
+  const setScript = (phase: 'pre' | 'post', code: string) =>
+    onSpec({ scripts: { pre: spec.scripts?.pre ?? '', post: spec.scripts?.post ?? '', [phase]: code } });
 
   const copyCurl = async () => {
     try {
@@ -140,7 +147,7 @@ export function RequestPane({
         aria-label="Request sections"
         className="flex shrink-0 gap-1 border-b border-slate-200 px-2 dark:border-slate-800"
       >
-        {(['params', 'headers', 'body', 'auth', 'settings'] as Section[]).map((id) => (
+        {(['params', 'headers', 'body', 'auth', 'scripts', 'tests', 'settings'] as Section[]).map((id) => (
           <button
             key={id}
             role="tab"
@@ -158,6 +165,8 @@ export function RequestPane({
             {id === 'headers' && counts.headers > 0 && <Badge>{counts.headers}</Badge>}
             {id === 'body' && spec.body.mode !== 'none' && <Badge>{spec.body.mode}</Badge>}
             {id === 'auth' && spec.auth.type !== 'none' && <Badge>{spec.auth.type}</Badge>}
+            {id === 'scripts' && counts.scripts > 0 && <Badge>{counts.scripts}</Badge>}
+            {id === 'tests' && counts.tests > 0 && <Badge>{counts.tests}</Badge>}
           </button>
         ))}
       </div>
@@ -215,18 +224,15 @@ export function RequestPane({
             )}
 
             {(spec.body.mode === 'json' || spec.body.mode === 'text' || spec.body.mode === 'xml') && (
-              <>
-                <label htmlFor="body-text" className="sr-only">
-                  Request body
-                </label>
-                <textarea
-                  id="body-text"
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  ariaLabel="Request body"
+                  language={spec.body.mode === 'json' ? 'json' : 'text'}
                   value={spec.body.text ?? ''}
-                  spellCheck={false}
-                  onChange={(e) => onSpec({ body: { ...spec.body, text: e.target.value } })}
-                  className="min-h-0 flex-1 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-900"
+                  onChange={(text) => onSpec({ body: { ...spec.body, text } })}
+                  placeholder={spec.body.mode === 'json' ? '{\n  "key": "value"\n}' : ''}
                 />
-              </>
+              </div>
             )}
 
             {spec.body.mode === 'form' && (
@@ -251,6 +257,65 @@ export function RequestPane({
         )}
 
         {section === 'auth' && <AuthEditor spec={spec} onSpec={onSpec} vaultKeys={vaultKeys} />}
+
+        {section === 'scripts' && (
+          <div className="flex h-full flex-col gap-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-1">
+              <h3 className="text-xs font-semibold text-slate-500">
+                Pre-request <span className="font-normal text-slate-400">— runs before sending</span>
+              </h3>
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  ariaLabel="Pre-request script"
+                  language="javascript"
+                  value={spec.scripts?.pre ?? ''}
+                  onChange={(code) => setScript('pre', code)}
+                  placeholder={"req.headers['X-Trace'] = bru.getVar('traceId')\nbru.setVar('ts', Date.now())"}
+                />
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-1">
+              <h3 className="text-xs font-semibold text-slate-500">
+                Post-response <span className="font-normal text-slate-400">— runs after the reply</span>
+              </h3>
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  ariaLabel="Post-response script"
+                  language="javascript"
+                  value={spec.scripts?.post ?? ''}
+                  onChange={(code) => setScript('post', code)}
+                  placeholder={"bru.setVar('token', res.json.access_token)\ntest('is ok', () => expect(res.status).toBe(200))"}
+                />
+              </div>
+            </div>
+
+            <p className="shrink-0 text-[11px] leading-relaxed text-slate-400">
+              Available: <code className="font-mono">req</code> (method/url/headers/body, mutable),{' '}
+              <code className="font-mono">res</code> (status/headers/body/json/latencyMs),{' '}
+              <code className="font-mono">bru.getVar/setVar/getEnvVar/setEnvVar</code>,{' '}
+              <code className="font-mono">test(name, fn)</code>,{' '}
+              <code className="font-mono">expect()</code>, <code className="font-mono">console.log</code>.
+              Sandboxed QuickJS: no network, no filesystem, 5 s limit.
+            </p>
+          </div>
+        )}
+
+        {section === 'tests' && (
+          <div className="flex flex-col gap-3">
+            <AssertionEditor
+              rows={spec.assertions ?? []}
+              onChange={(assertions) => onSpec({ assertions })}
+            />
+            <p className="text-[11px] text-slate-400">
+              Sources: <code className="font-mono">status</code>,{' '}
+              <code className="font-mono">latencyMs</code>, <code className="font-mono">size</code>,{' '}
+              <code className="font-mono">body</code>, <code className="font-mono">headers.&lt;name&gt;</code>,
+              or a JSON path like <code className="font-mono">$.data.0.id</code>. Results appear in the
+              response pane.
+            </p>
+          </div>
+        )}
 
         {section === 'settings' && (
           <div className="grid max-w-md gap-3 text-sm">

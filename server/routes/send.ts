@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 
 import { sendRequest, toCurl } from '../core/send.ts';
-import { activeEnvVars } from '../core/collections.ts';
+import { activeEnvVars, applyEnvVarChanges } from '../core/collections.ts';
 import { record } from '../core/req-history.ts';
 import { broadcast } from './ws.ts';
 import type { RequestSpec } from '../../shared/collections.ts';
@@ -57,6 +57,7 @@ sendRouter.post('/', async (c) => {
 
   const envVars = { ...(await activeEnvVars()), ...(vars ?? {}) };
   const outcome = await sendRequest(spec, { files, vars: envVars });
+  if (outcome.envVars) await applyEnvVarChanges(outcome.envVars);
   const entry = await record(spec, outcome.sentHeaders, outcome.sentBody, outcome.result);
   broadcast({ type: 'req-history:appended', entry });
 
