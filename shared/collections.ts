@@ -32,7 +32,59 @@ export interface RequestBody {
   multipart?: MultipartRow[];
 }
 
-export type AuthType = 'none' | 'bearer' | 'basic' | 'header' | 'vault';
+export type AuthType = 'none' | 'bearer' | 'basic' | 'header' | 'vault' | 'oauth2';
+
+export type OAuth2Grant =
+  | 'client_credentials'
+  | 'password'
+  | 'authorization_code'
+  | 'implicit'
+  | 'refresh_token'
+  | 'device_code';
+
+/** How the client id/secret reach the token endpoint. */
+export type ClientAuthStyle = 'body' | 'basic';
+
+export interface OAuth2Config {
+  grant: OAuth2Grant;
+  /** authorization endpoint - authorization_code, implicit, device_code */
+  authUrl?: string;
+  /** token endpoint - everything except implicit */
+  tokenUrl?: string;
+  /** device authorization endpoint; defaults to authUrl for device_code */
+  deviceUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  clientAuth?: ClientAuthStyle;
+  scope?: string;
+  audience?: string;
+  /** password grant */
+  username?: string;
+  password?: string;
+  /** authorization_code: PKCE is on unless explicitly disabled */
+  usePkce?: boolean;
+  redirectUri?: string;
+  /** refresh_token grant, or a manually pasted refresh token */
+  refreshToken?: string;
+  /** extra token-request parameters some providers require */
+  extraParams?: KV[];
+  /** "Bearer" unless the provider insists otherwise */
+  headerPrefix?: string;
+  /** cache key; defaults to a hash of grant + endpoint + client + scope */
+  tokenId?: string;
+}
+
+/** What the UI shows about a cached token - never the token itself. */
+export interface TokenInfo {
+  id: string;
+  tokenType: string;
+  /** first/last few characters only */
+  preview: string;
+  scope?: string;
+  expiresAt?: number;
+  hasRefreshToken: boolean;
+  obtainedAt: number;
+}
 
 export interface RequestAuth {
   type: AuthType;
@@ -44,8 +96,10 @@ export interface RequestAuth {
   /** custom header */
   headerName?: string;
   headerValue?: string;
-  /** vault: id of a KeyEntry in store.json (wired up in M2) */
+  /** vault: id of a KeyEntry in store.json */
   keyId?: string;
+  /** oauth2 */
+  oauth2?: OAuth2Config;
 }
 
 export interface RequestSettings {

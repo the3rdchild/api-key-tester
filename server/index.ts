@@ -18,10 +18,12 @@ import { importRouter, previewImportHandler } from './routes/import.ts';
 import { rawRouter } from './routes/raw.ts';
 import { collectionsRouter } from './routes/collections.ts';
 import { sendRouter } from './routes/send.ts';
+import { oauthApiRouter, oauthCallbackRouter } from './routes/oauth.ts';
 import { benchmarkRouter } from './routes/benchmark.ts';
 import { addSocket, broadcast, socketCount } from './routes/ws.ts';
 import { isMirrorEnabled, loadStore, setChangeEmitter, setMarkSelfWriteHook } from './core/store.ts';
 import { loadCollections, setCollectionsChangeEmitter } from './core/collections.ts';
+import { setTokenChangeEmitter } from './core/oauth2.ts';
 import { markSelfWrite, setExternalChangeListener, startWatcher } from './core/watcher.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
 import type { WSEvent } from '../shared/types.ts';
@@ -51,6 +53,10 @@ app.route('/api/import', importRouter);
 app.route('/api/raw', rawRouter);
 app.route('/api/collections', collectionsRouter);
 app.route('/api/send', sendRouter);
+app.route('/api/oauth', oauthApiRouter);
+// Registered before the SPA catch-all: this is the URL registered with the
+// OAuth provider, so it must not fall through to index.html.
+app.route('/oauth', oauthCallbackRouter);
 app.route('/api/benchmark', benchmarkRouter);
 
 // POST /api/test-all - batch (lives at root /api because testRouter is mounted
@@ -83,6 +89,10 @@ setChangeEmitter(() => {
 // collections.json changed (any write goes through core/collections.ts) →
 // tell every open tab so two windows never drift apart.
 setCollectionsChangeEmitter(() => broadcast({ type: 'collections:changed' }));
+
+// A token arriving from the browser redirect has to reach the tab that asked
+// for it - that tab is waiting on this event, not on a response.
+setTokenChangeEmitter((tokenId) => broadcast({ type: 'oauth:token', tokenId }));
 
 setExternalChangeListener((path) => {
   broadcast({ type: 'file:changed', path } satisfies WSEvent);

@@ -179,6 +179,7 @@ export function ClientView() {
                   tab={active}
                   vaultKeys={state.vaultKeys}
                   chainable={state.chainable}
+                  tokenTick={state.tokenTick}
                   onSpec={(patch) => state.updateSpec(active.id, patch)}
                   onFiles={(field, files) =>
                     state.patchTab(active.id, { files: { ...active.files, [field]: files } })

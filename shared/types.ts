@@ -108,6 +108,7 @@ export type WSEvent =
   | { type: 'store:changed'; keys: KeyEntry[] }
   | { type: 'file:changed'; path: string }
   | { type: 'collections:changed' }
+  | { type: 'oauth:token'; tokenId: string }
   | { type: 'req-history:appended'; entry: ReqHistoryEntry };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {

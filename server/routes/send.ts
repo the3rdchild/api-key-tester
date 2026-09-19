@@ -65,6 +65,7 @@ sendRouter.post('/', async (c) => {
     result: outcome.result,
     missing: outcome.missing,
     note: outcome.note,
+    needsAuthorization: outcome.needsAuthorization,
     historyId: entry.id,
   });
 });

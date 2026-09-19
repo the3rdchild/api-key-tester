@@ -10,6 +10,7 @@ import { chainLookups, fromRecord, interpolateSpec, type VarLookup } from './var
 import { cookieHeaderFor, captureSetCookies } from './cookies.ts';
 import { remember, responseLookup } from './responses.ts';
 import { resolveVaultAuth, type VaultAuth } from './vault-auth.ts';
+import { ensureToken } from './oauth2.ts';
 import { runScript, type ScriptOutcome } from './script.ts';
 import { runAssertions } from './assert.ts';
 import { allRuntimeVars, runtimeLookup, setRuntimeVars } from './runtime-vars.ts';
@@ -55,6 +56,8 @@ export interface SendOutcome {
   note?: string;
   /** bru.setEnvVar writes - the caller persists them into collections.json */
   envVars?: Record<string, string>;
+  /** the request never went out: OAuth2 needs a browser round-trip first */
+  needsAuthorization?: boolean;
 }
 
 function buildUrl(spec: RequestSpec): URL {
@@ -170,11 +173,40 @@ export async function sendRequest(
     return { result: errorResult('Only http/https URLs are allowed', 0), sentHeaders: {}, missing };
   }
 
+  // ─── OAuth2 ───────────────────────────────────────────────────────────────
+  // Resolved before anything is sent: an expired token is refreshed here, and
+  // a flow that still needs the browser stops the send instead of firing off a
+  // request that can only come back 401.
+  let oauthHeader: string | undefined;
+  if (spec.auth?.type === 'oauth2') {
+    if (!spec.auth.oauth2) {
+      return {
+        result: errorResult('OAuth2 selected but not configured', 0),
+        sentHeaders: {},
+        missing,
+      };
+    }
+    const outcome = await ensureToken(spec.auth.oauth2);
+    if (outcome.problem || !outcome.token) {
+      return {
+        result: errorResult(`OAuth2: ${outcome.problem ?? 'no token'}`, 0),
+        sentHeaders: {},
+        missing,
+        note: outcome.problem,
+        needsAuthorization: outcome.needsAuthorization,
+      };
+    }
+    const prefix = spec.auth.oauth2.headerPrefix || outcome.token.tokenType || 'Bearer';
+    oauthHeader = `${prefix} ${outcome.token.accessToken}`;
+  }
+
   const headers = new Headers();
   for (const row of spec.headers) {
     if (row.enabled && row.key.trim()) headers.set(row.key.trim(), row.value);
   }
   applyAuth(spec, headers);
+  // Same rule as the vault: a header you wrote yourself wins.
+  if (oauthHeader && !headers.has('Authorization')) headers.set('Authorization', oauthHeader);
 
   // Vault credentials fill in what the request didn't set explicitly - an
   // Authorization header you typed yourself always wins over the vault's.

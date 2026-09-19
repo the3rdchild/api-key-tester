@@ -3,9 +3,11 @@
 import type {
   CollectionsFile,
   EnvironmentDef,
+  OAuth2Config,
   ReqHistoryEntry,
   RequestSpec,
   SendResult,
+  TokenInfo,
 } from '../../../shared/collections.ts';
 
 async function json<T>(res: Response): Promise<T> {
@@ -26,7 +28,18 @@ export interface SendResponse {
   missing: string[];
   /** advisory from the vault (unsupported provider, freshly signed JWT, …) */
   note?: string;
+  /** OAuth2 stopped the send: the browser step is still needed */
+  needsAuthorization?: boolean;
   historyId: string;
+}
+
+export interface DeviceStart {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  interval: number;
+  expiresIn: number;
 }
 
 export const clientApi = {
@@ -143,6 +156,50 @@ export const clientApi = {
     fetch(`${BASE}/chainable`).then((r) =>
       json<{ id: string; name: string; status: number }[]>(r),
     ),
+
+  oauth: {
+    redirectUri: () =>
+      fetch('/api/oauth/redirect-uri').then((r) => json<{ redirectUri: string }>(r)),
+
+    status: (config: OAuth2Config) =>
+      fetch('/api/oauth/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      }).then((r) => json<{ id: string; token: TokenInfo | null }>(r)),
+
+    /** run a grant that needs no browser (client_credentials, password, refresh) */
+    token: (config: OAuth2Config) =>
+      fetch('/api/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      }).then((r) => json<{ token: TokenInfo }>(r)),
+
+    authorize: (config: OAuth2Config) =>
+      fetch('/api/oauth/authorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      }).then((r) => json<{ authorizeUrl: string; state: string }>(r)),
+
+    deviceStart: (config: OAuth2Config) =>
+      fetch('/api/oauth/device/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      }).then((r) => json<DeviceStart>(r)),
+
+    devicePoll: (config: OAuth2Config, deviceCode: string) =>
+      fetch('/api/oauth/device/poll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config, deviceCode }),
+      }).then((r) => json<{ token?: TokenInfo; pending?: boolean }>(r)),
+
+    clear: (id: string) =>
+      fetch(`/api/oauth/tokens/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+  },
 
   curl: (spec: RequestSpec) =>
     fetch('/api/send/curl', {

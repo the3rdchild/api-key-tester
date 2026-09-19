@@ -107,6 +107,32 @@ export function interpolateSpec(
     }
   }
 
+  if (auth.oauth2) {
+    const oauth = { ...auth.oauth2 };
+    for (const field of [
+      'authUrl',
+      'tokenUrl',
+      'deviceUrl',
+      'clientId',
+      'clientSecret',
+      'scope',
+      'audience',
+      'username',
+      'password',
+      'redirectUri',
+      'refreshToken',
+    ] as const) {
+      const raw = oauth[field];
+      if (typeof raw === 'string' && raw) {
+        const r = interpolate(raw, lookup);
+        for (const m of r.missing) missing.add(m);
+        oauth[field] = r.out;
+      }
+    }
+    if (oauth.extraParams) oauth.extraParams = rows(oauth.extraParams, lookup, missing);
+    auth.oauth2 = oauth;
+  }
+
   return {
     spec: {
       ...spec,

@@ -56,11 +56,12 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Import cURL** — `Alt+I` (or the cURL button), paste what devtools gave you; query strings become editable params and unsupported flags are reported, not dropped
 - **Scripts** — pre-request and post-response JavaScript in a QuickJS sandbox (no network, no filesystem, 32 MB, 5 s). `req` is mutable, `res` carries `json`, and `bru.getVar/setVar/getEnvVar/setEnvVar` move values between requests. `console.log` output lands in the response pane
 - **Tests** — `test('name', () => expect(res.status).toBe(200))` from scripts, plus declarative assertions (source · operator · value) over `status`, `latencyMs`, `size`, `headers.<name>` or a JSON path like `$.data.0.id`. Results show as a pass/fail chip on the response and as `passed/total` in history
+- **OAuth 2.0** — client credentials, password, authorization code (PKCE on by default), implicit, refresh token and device code. Tokens are cached, refreshed a minute before they expire, and a request whose flow still needs the browser is refused rather than sent to collect a 401. The redirect URI is `http://127.0.0.1:8788/oauth/callback`
 - **Copy as curl** — exactly what was sent, auth included
 
 Dependencies are installed **inside the container** (`docker compose exec key-tester bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec key-tester bunx tsc --noEmit`.
 
-Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth (M2) will reference a key by id, never its value.
+Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth references a key by id, and OAuth2 tokens live in `oauth-tokens.json` (gitignored) — the collection keeps only endpoints, client id and scope.
 
 Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar, `Alt+I` import cURL.
 

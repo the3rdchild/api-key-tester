@@ -199,7 +199,7 @@ Layout tetap (tab penuh):
 | **M1** | `collections.json` + tab request + pipeline kirim (tanpa script) + form-data/upload + cookie jar | ✅ selesai — **Apier sudah bisa dicopot** |
 | **M2** | Variabel + environment + chaining + auth dari vault + import cURL | ✅ selesai — setara Postman harian |
 | **M3** | Sandbox QuickJS + assertion + tab Tests | ✅ selesai |
-| **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | |
+| **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | ✅ selesai |
 | **M5** | Collection runner + CLI + reporter | Bisa dipakai di CI |
 | **M6** | Khas LLM: streaming SSE + token/detik, matrix run lintas key, kolom kuota | Yang tidak dimiliki Postman |
 | **M7** | Import Postman v2.1 / Insomnia / OpenAPI | Migrasi koleksi kantor |
@@ -303,6 +303,32 @@ docker compose exec key-tester bunx tsc --noEmit # typecheck ikut di container
 ```
 
 Konsekuensinya: `node_modules` di host tertinggal (tidak punya `quickjs-emscripten` maupun CodeMirror), jadi `bun run dev` dari host tidak akan jalan sampai install host berhasil. Mode container tetap penuh.
+
+## 10e. Status M4 (selesai 2026-09-19)
+
+Diuji lawan mock provider OAuth2 (`scratchpad/oauth-mock.ts`: `/authorize`, `/token`,
+`/device`, `/me`) yang memvalidasi client secret, `redirect_uri`, dan PKCE sungguhan.
+
+| Skenario | Hasil |
+|---|---|
+| `client_credentials` | token 3600 s, request ke `/me` → 200 (`sub: service`) |
+| `password` (token 30 s) | token disegarkan otomatis **sebelum** kirim: `at_1…3vqs` → `at_1…ig9c`, provider menerima token baru, expiry jadi 3600 s |
+| `authorization_code` + PKCE | URL otorisasi membawa `code_challenge` + `code_challenge_method=S256`; callback menukar code (server memverifikasi verifier) → 200 (`sub: budi`) |
+| `implicit` | diuji lewat Firefox headless sungguhan: fragment `#access_token=…` dibaca JS di halaman callback lalu dikirim balik → token tersimpan (tanpa refresh token, sesuai sifatnya) |
+| `refresh_token` (ditempel manual) | token baru terbit, request → 200 |
+| `device_code` | poll #1 `authorization_pending`, poll #2 token terbit, request → 200 |
+| Belum punya token | request **tidak dikirim**; balasannya "No token yet - click Authorize in the Auth tab" + flag `needsAuthorization` |
+| Client secret salah | "Token endpoint said 401: invalid_client" |
+
+Keputusan saat implementasi:
+
+- **Token disimpan di `oauth-tokens.json`, bukan di `store.json`** seperti rencana awal. Alasannya: `store.json` dicerminkan ke `keys.md` lewat parser/writer, dan menempelkan bagian yang tidak berhubungan ke sana berisiko merusak sinkronisasi dua arah. Token itu artefak runtime — tempatnya sebelah `cookies.json`.
+- **`collections.json` tetap bebas rahasia.** Yang tersimpan di koleksi hanya konfigurasi (endpoint, client id, scope); tokennya di file terpisah yang di-gitignore. Client secret memang ikut di konfigurasi — pakai `{{vars}}` kalau koleksinya mau dibagikan.
+- **Cache key token diturunkan dari grant + endpoint + client id + scope + username**, jadi dua request dengan client yang sama berbagi satu token (dan satu refresh). Bisa dipaksa pisah lewat `tokenId`.
+- **Refresh 60 detik sebelum kedaluwarsa**, memakai refresh token bila ada; kalau tidak ada, grant yang bisa jalan sendiri (client_credentials/password) dijalankan ulang. Kalau tetap tidak bisa, request ditolak dengan alasan — bukan dikirim untuk dijawab 401.
+- **PKCE menyala secara default** untuk authorization_code; `code_verifier` disimpan di memori bersama `state` dan kedaluwarsa dalam 10 menit.
+- **Halaman callback melayani dua kasus**: `?code=` ditukar di server, sedangkan implicit (`#access_token=`) tidak pernah sampai ke server sehingga halaman itu sendiri yang mengirimkannya balik lewat `/api/oauth/implicit`.
+- **Header `Authorization` tulisan tangan tetap menang** atas token OAuth2 — aturan yang sama seperti vault.
 
 ## 11. Yang masih terbuka
 

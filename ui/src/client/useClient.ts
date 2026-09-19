@@ -28,8 +28,10 @@ export interface Tab {
   sending: boolean;
   result?: SendResult;
   missing?: string[];
-  /** advisory from the vault for this send */
+  /** advisory from the vault or OAuth2 for this send */
   note?: string;
+  /** OAuth2 refused to send: the browser step is still pending */
+  needsAuth?: boolean;
   error?: string;
   /** multipart files live in memory only - they can't be serialised */
   files: Record<string, File[]>;
@@ -78,6 +80,8 @@ export function useClient() {
   const [history, setHistory] = useState<ReqHistoryEntry[]>([]);
   const [vaultKeys, setVaultKeys] = useState<KeyEntry[]>([]);
   const [chainable, setChainable] = useState<{ id: string; name: string; status: number }[]>([]);
+  /** bumped when the OAuth callback tab stores a token, so the Auth tab refreshes */
+  const [tokenTick, setTokenTick] = useState(0);
   const [wsConnected, setWsConnected] = useState(false);
 
   // keep the active tab pointing at something real
@@ -145,6 +149,7 @@ export function useClient() {
         try {
           const msg = JSON.parse(ev.data as string) as { type: string; entry?: ReqHistoryEntry };
           if (msg.type === 'collections:changed') reloadCollections().catch(() => {});
+          if (msg.type === 'oauth:token') setTokenTick((n) => n + 1);
           if (msg.type === 'req-history:appended' && msg.entry) {
             setHistory((prev) => [msg.entry!, ...prev].slice(0, 200));
           }
@@ -250,6 +255,7 @@ export function useClient() {
           result: res.result,
           missing: res.missing,
           note: res.note,
+          needsAuth: res.needsAuthorization,
           error: res.result.error,
         });
         // this response can now be referenced with {{res.<name>.…}}
@@ -286,6 +292,7 @@ export function useClient() {
     history,
     vaultKeys,
     chainable,
+    tokenTick,
     wsConnected,
     newTab,
     closeTab,

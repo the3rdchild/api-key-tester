@@ -5,6 +5,7 @@ keys.md
 collections.json
 cookies.json
 requests-history.jsonl
+oauth-tokens.json
 
 # Masuk lewat bind mount / named volume saat runtime.
 node_modules

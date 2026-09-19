@@ -25,3 +25,4 @@ ref/
 collections.json
 cookies.json
 requests-history.jsonl
+oauth-tokens.json

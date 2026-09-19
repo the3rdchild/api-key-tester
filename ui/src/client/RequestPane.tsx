@@ -9,6 +9,7 @@ import { AssertionEditor } from './AssertionEditor.tsx';
 import { CodeEditor } from './CodeEditor.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { MultipartEditor } from './MultipartEditor.tsx';
+import { OAuth2Editor } from './OAuth2Editor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import { METHODS } from '../../../shared/collections.ts';
 import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
@@ -30,6 +31,7 @@ interface Props {
   tab: Tab;
   vaultKeys: KeyEntry[];
   chainable: { id: string; name: string; status: number }[];
+  tokenTick: number;
   onSpec: (patch: Partial<RequestSpec>) => void;
   onFiles: (field: string, files: File[]) => void;
   onSend: () => void;
@@ -41,6 +43,7 @@ export function RequestPane({
   tab,
   vaultKeys,
   chainable,
+  tokenTick,
   onSpec,
   onFiles,
   onSend,
@@ -256,7 +259,15 @@ export function RequestPane({
           </div>
         )}
 
-        {section === 'auth' && <AuthEditor spec={spec} onSpec={onSpec} vaultKeys={vaultKeys} />}
+        {section === 'auth' && (
+          <AuthEditor
+            spec={spec}
+            onSpec={onSpec}
+            vaultKeys={vaultKeys}
+            tokenTick={tokenTick}
+            onToast={onToast}
+          />
+        )}
 
         {section === 'scripts' && (
           <div className="flex h-full flex-col gap-3">
@@ -368,8 +379,18 @@ export function RequestPane({
       )}
 
       {tab.note && (
-        <p className="shrink-0 border-t border-sky-200 bg-sky-50 px-3 py-1 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
-          <i className="fa-solid fa-circle-info" /> {tab.note}
+        <p className="flex shrink-0 items-center gap-2 border-t border-sky-200 bg-sky-50 px-3 py-1 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+          <i className="fa-solid fa-circle-info" />
+          <span className="min-w-0 flex-1">{tab.note}</span>
+          {tab.needsAuth && (
+            <button
+              type="button"
+              onClick={() => setSection('auth')}
+              className="shrink-0 rounded bg-sky-600 px-2 py-0.5 font-medium text-white hover:bg-sky-700"
+            >
+              Open Auth tab
+            </button>
+          )}
         </p>
       )}
 
@@ -389,10 +410,14 @@ function AuthEditor({
   spec,
   onSpec,
   vaultKeys,
+  tokenTick,
+  onToast,
 }: {
   spec: RequestSpec;
   onSpec: (patch: Partial<RequestSpec>) => void;
   vaultKeys: KeyEntry[];
+  tokenTick: number;
+  onToast: (msg: string) => void;
 }) {
   const auth = spec.auth;
   const set = (patch: Partial<RequestSpec['auth']>) => onSpec({ auth: { ...auth, ...patch } });
@@ -408,11 +433,21 @@ function AuthEditor({
         >
           <option value="none">No auth</option>
           <option value="vault">From key vault</option>
+          <option value="oauth2">OAuth 2.0</option>
           <option value="bearer">Bearer token</option>
           <option value="basic">Basic</option>
           <option value="header">Custom header</option>
         </select>
       </Field>
+
+      {auth.type === 'oauth2' && (
+        <OAuth2Editor
+          config={auth.oauth2 ?? { grant: 'client_credentials', clientAuth: 'body' }}
+          onChange={(oauth2) => set({ oauth2 })}
+          tokenTick={tokenTick}
+          onToast={onToast}
+        />
+      )}
 
       {auth.type === 'vault' && (
         <>
@@ -500,7 +535,7 @@ function AuthEditor({
         </>
       )}
 
-      {auth.type !== 'vault' && (
+      {auth.type !== 'vault' && auth.type !== 'oauth2' && (
         <p className="text-xs text-slate-400">
           Values accept variables: <code className="font-mono">{'{{token}}'}</code> from the
           environment, or <code className="font-mono">{'{{res.Login.body.access_token}}'}</code> to
