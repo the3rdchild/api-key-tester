@@ -76,7 +76,7 @@ export function ResponsePane({ result, error, sending, liveStream }: Props) {
 
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Response">
-      <div className="flex h-[3.25rem] shrink-0 items-center gap-3 border-b border-slate-200 px-3 dark:border-slate-800">
+      <div className="thin-scroll flex h-[3.25rem] shrink-0 items-center gap-3 overflow-x-auto border-b border-slate-200 px-3 dark:border-slate-800">
         {sending && (
           <span className="text-sm text-slate-400">
             <i className="fa-solid fa-spinner fa-spin" />{' '}
@@ -179,7 +179,7 @@ export function ResponsePane({ result, error, sending, liveStream }: Props) {
         <div
           role="tablist"
           aria-label="Response views"
-          className="flex shrink-0 gap-1 border-b border-slate-200 px-2 dark:border-slate-800"
+          className="thin-scroll flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 px-2 dark:border-slate-800"
         >
           {([
             ...(streaming ? (['stream'] as View[]) : []),
@@ -195,7 +195,7 @@ export function ResponsePane({ result, error, sending, liveStream }: Props) {
               type="button"
               aria-selected={view === id}
               onClick={() => setView(id)}
-              className={`border-b-2 px-3 py-2 text-xs font-medium capitalize ${
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium capitalize ${
                 view === id
                   ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'

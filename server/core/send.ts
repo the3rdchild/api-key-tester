@@ -62,10 +62,25 @@ export interface SendOutcome {
   envVars?: Record<string, string>;
   /** the request never went out: OAuth2 needs a browser round-trip first */
   needsAuthorization?: boolean;
+  /** the URL after interpolation and query params - what the history should show */
+  sentUrl?: string;
+}
+
+/** Local names get http://, everything else https:// - typing "localhost:3000"
+ *  and getting an https failure is a worse default than either guess. */
+function withScheme(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('{{')) return trimmed;
+  const host = trimmed.split(/[/?#]/)[0] ?? '';
+  const local =
+    /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)(:\d+)?$/i.test(host) ||
+    /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) ||
+    /\.local(:\d+)?$/i.test(host);
+  return `${local ? 'http' : 'https'}://${trimmed}`;
 }
 
 function buildUrl(spec: RequestSpec): URL {
-  const url = new URL(spec.url);
+  const url = new URL(withScheme(spec.url));
   for (const row of spec.params) {
     if (!row.enabled || !row.key) continue;
     url.searchParams.append(row.key, row.value);
@@ -396,6 +411,7 @@ export async function sendRequest(
           missing,
           note: vault?.note,
           envVars: envWrites,
+          sentUrl: url.toString(),
         };
       }
 
@@ -431,6 +447,7 @@ export async function sendRequest(
       missing,
       note: vault?.note,
       envVars: envWrites,
+      sentUrl: url.toString(),
     };
   } finally {
     clearTimeout(timer);

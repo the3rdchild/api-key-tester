@@ -72,7 +72,13 @@ sendRouter.post('/', async (c) => {
       : undefined,
   });
   if (outcome.envVars) await applyEnvVarChanges(outcome.envVars);
-  const entry = await record(spec, outcome.sentHeaders, outcome.sentBody, outcome.result);
+  const entry = await record(
+    spec,
+    outcome.sentHeaders,
+    outcome.sentBody,
+    outcome.result,
+    outcome.sentUrl,
+  );
   broadcast({ type: 'req-history:appended', entry });
 
   return c.json({

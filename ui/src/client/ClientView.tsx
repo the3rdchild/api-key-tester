@@ -174,7 +174,7 @@ export function ClientView() {
         <div ref={splitRef} className="flex min-h-0 flex-1">
           {active ? (
             <>
-              <div style={{ width: `${split * 100}%` }} className="min-w-0">
+              <div style={{ width: `${split * 100}%` }} className="min-w-0 overflow-hidden">
                 <RequestPane
                   tab={active}
                   vaultKeys={state.vaultKeys}
@@ -198,7 +198,7 @@ export function ClientView() {
                 className="w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-indigo-400 dark:bg-slate-800"
               />
 
-              <div style={{ width: `${(1 - split) * 100}%` }} className="min-w-0">
+              <div style={{ width: `${(1 - split) * 100}%` }} className="min-w-0 overflow-hidden">
                 <ResponsePane
                   result={active.result}
                   error={active.error}

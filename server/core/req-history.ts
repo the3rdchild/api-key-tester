@@ -33,13 +33,28 @@ const SENSITIVE_HEADERS = new Set([
 
 const REDACTED = '«redacted»';
 
-/** Credential values from the vault, longest first so the longest match wins. */
+/** Credential fields that are actually secret. A vault entry also stores
+ *  baseURL, model and friends - scrubbing those turned "api.deepseek.com/models"
+ *  into "«redacted»/models" in the history, which helps nobody. */
+const SECRET_FIELDS = new Set([
+  'apiKey',
+  'apiSecret',
+  'secret',
+  'token',
+  'password',
+  'accessKeyId',
+  'secretAccessKey',
+  'privateKey',
+]);
+
+/** Secret values from the vault, longest first so the longest match wins. */
 async function secretValues(): Promise<string[]> {
   try {
     const keys = await getAllKeys();
     const out = new Set<string>();
     for (const k of keys) {
-      for (const v of Object.values(k.credentials ?? {})) {
+      for (const [field, v] of Object.entries(k.credentials ?? {})) {
+        if (!SECRET_FIELDS.has(field)) continue;
         if (typeof v === 'string' && v.length >= 8) out.add(v);
       }
     }
@@ -76,6 +91,8 @@ export async function record(
   sentHeaders: Record<string, string>,
   sentBody: string | undefined,
   result: SendResult,
+  /** the resolved URL; without it the log is a wall of "{{BASE_URL}}" */
+  sentUrl?: string,
 ): Promise<ReqHistoryEntry> {
   const secrets = await secretValues();
   const entry: ReqHistoryEntry = {
@@ -83,7 +100,7 @@ export async function record(
     ts: new Date().toISOString(),
     name: spec.name,
     method: spec.method,
-    url: scrub(spec.url, secrets),
+    url: scrub(sentUrl || spec.url, secrets),
     status: result.error ? undefined : result.status,
     statusText: result.statusText,
     latencyMs: result.latencyMs,
