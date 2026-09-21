@@ -21,6 +21,7 @@ export function VaultView() {
   const [testerEntry, setTesterEntry] = useState<KeyEntry | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
   const [filterProvider, setFilterProvider] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -84,6 +85,22 @@ export function VaultView() {
       showToast(`Batch failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setTestingAll(false);
+    }
+  };
+
+  // Only a few providers expose a balance cheaply; the rest keep an empty cell
+  // rather than a guessed number.
+  const handleCheckQuota = async () => {
+    setCheckingQuota(true);
+    try {
+      const res = await fetch('/api/quota', { method: 'POST' });
+      const body = (await res.json()) as { checked: number };
+      showToast(`Quota checked for ${body.checked} key(s)`);
+      refresh();
+    } catch (e) {
+      showToast(`Quota check failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCheckingQuota(false);
     }
   };
 
@@ -188,6 +205,14 @@ export function VaultView() {
             className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             {testingAll ? <><i className="fa-solid fa-spinner fa-spin" /> Testing…</> : <><i className="fa-solid fa-play" /> Test all</>}
+          </button>
+          <button
+            onClick={handleCheckQuota}
+            disabled={checkingQuota}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            title="Check remaining credit where the provider exposes it"
+          >
+            {checkingQuota ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-gauge-high" />} Quota
           </button>
           <button
             onClick={refresh}

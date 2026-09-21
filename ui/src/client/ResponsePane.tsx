@@ -8,16 +8,19 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { SendResult } from '../../../shared/collections.ts';
 
-type View = 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests';
+type View = 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream';
 
 interface Props {
   result?: SendResult;
   error?: string;
   sending: boolean;
+  /** text arriving right now, before the response is complete */
+  liveStream?: string;
 }
 
-export function ResponsePane({ result, error, sending }: Props) {
+export function ResponsePane({ result, error, sending, liveStream }: Props) {
   const [view, setView] = useState<View>('pretty');
+  const streaming = !!result?.stream;
   const [wrap, setWrap] = useState(true);
 
   const pretty = useMemo(() => {
@@ -46,6 +49,12 @@ export function ResponsePane({ result, error, sending }: Props) {
     if (view === 'tests' && !hasDiagnostics) setView('pretty');
   }, [view, hasDiagnostics]);
 
+  // A stream's raw body is SSE framing; the stitched text is what you want to
+  // read first.
+  useEffect(() => {
+    if (streaming) setView('stream');
+  }, [streaming, result?.latencyMs]);
+
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -68,7 +77,12 @@ export function ResponsePane({ result, error, sending }: Props) {
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Response">
       <div className="flex h-[3.25rem] shrink-0 items-center gap-3 border-b border-slate-200 px-3 dark:border-slate-800">
-        {sending && <span className="text-sm text-slate-400">Sending…</span>}
+        {sending && (
+          <span className="text-sm text-slate-400">
+            <i className="fa-solid fa-spinner fa-spin" />{' '}
+            {liveStream ? `streaming… ${liveStream.length} chars` : 'Sending…'}
+          </span>
+        )}
 
         {!sending && !result && !error && (
           <span className="text-sm text-slate-400">
@@ -88,6 +102,29 @@ export function ResponsePane({ result, error, sending }: Props) {
             <StatusChip status={result.status} text={result.statusText} />
             <Metric icon="fa-clock" value={`${result.latencyMs} ms`} title={`TTFB ${result.ttfbMs} ms`} />
             <Metric icon="fa-database" value={formatBytes(result.size)} />
+            {result.stream && (
+              <>
+                {result.stream.ttftMs !== undefined && (
+                  <Metric
+                    icon="fa-bolt"
+                    value={`TTFT ${result.stream.ttftMs} ms`}
+                    title="Time to the first generated token"
+                  />
+                )}
+                {result.stream.tokensPerSecond !== undefined && (
+                  <Metric
+                    icon="fa-gauge-high"
+                    value={`${result.stream.tokensPerSecond} tok/s`}
+                    title={`${result.stream.deltas} deltas over ${result.stream.chunks} chunks`}
+                  />
+                )}
+                {!result.stream.finished && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    stream cut short
+                  </span>
+                )}
+              </>
+            )}
             {result.redirects.length > 0 && (
               <Metric
                 icon="fa-arrow-turn-down"
@@ -144,7 +181,14 @@ export function ResponsePane({ result, error, sending }: Props) {
           aria-label="Response views"
           className="flex shrink-0 gap-1 border-b border-slate-200 px-2 dark:border-slate-800"
         >
-          {(['pretty', 'raw', 'headers', 'cookies', ...(hasDiagnostics ? (['tests'] as View[]) : [])] as View[]).map((id) => (
+          {([
+            ...(streaming ? (['stream'] as View[]) : []),
+            'pretty',
+            'raw',
+            'headers',
+            'cookies',
+            ...(hasDiagnostics ? (['tests'] as View[]) : []),
+          ] as View[]).map((id) => (
             <button
               key={id}
               role="tab"
@@ -174,6 +218,15 @@ export function ResponsePane({ result, error, sending }: Props) {
       )}
 
       <div className="min-h-0 flex-1 overflow-auto">
+        {sending && liveStream ? (
+          <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed">
+            {liveStream}
+            <span className="animate-pulse">▌</span>
+          </pre>
+        ) : null}
+        {result && !error && view === 'stream' && (
+          <Body text={result.streamText ?? ''} wrap={wrap} />
+        )}
         {result && !error && view === 'pretty' && <Body text={pretty} wrap={wrap} />}
         {result && !error && view === 'raw' && <Body text={result.body} wrap={wrap} />}
         {result && !error && view === 'headers' && <HeaderTable headers={result.headers} />}

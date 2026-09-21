@@ -9,6 +9,7 @@ import { AssertionEditor } from './AssertionEditor.tsx';
 import { CodeEditor } from './CodeEditor.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { MultipartEditor } from './MultipartEditor.tsx';
+import { MatrixDialog } from './MatrixDialog.tsx';
 import { OAuth2Editor } from './OAuth2Editor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import { METHODS } from '../../../shared/collections.ts';
@@ -51,6 +52,7 @@ export function RequestPane({
   onToast,
 }: Props) {
   const [section, setSection] = useState<Section>('params');
+  const [matrixOpen, setMatrixOpen] = useState(false);
   const spec = tab.spec;
   const settings = spec.settings;
 
@@ -133,6 +135,14 @@ export function RequestPane({
         >
           <i className="fa-solid fa-floppy-disk" />
           {tab.dirty && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMatrixOpen(true)}
+          title="Run this request across several vault keys"
+          className="h-9 rounded border border-slate-300 px-3 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          <i className="fa-solid fa-table-cells" />
         </button>
         <button
           type="button"
@@ -402,6 +412,13 @@ export function RequestPane({
           <i className="fa-solid fa-link" /> chain from: {chainable.map((c) => c.name).join(', ')}
         </p>
       )}
+      <MatrixDialog
+        open={matrixOpen}
+        spec={spec}
+        vaultKeys={vaultKeys}
+        onClose={() => setMatrixOpen(false)}
+        onToast={onToast}
+      />
     </section>
   );
 }

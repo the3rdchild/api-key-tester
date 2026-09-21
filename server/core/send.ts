@@ -11,6 +11,7 @@ import { cookieHeaderFor, captureSetCookies } from './cookies.ts';
 import { remember, responseLookup } from './responses.ts';
 import { resolveVaultAuth, type VaultAuth } from './vault-auth.ts';
 import { ensureToken } from './oauth2.ts';
+import { isStreaming, readStream } from './stream.ts';
 import { runScript, type ScriptOutcome } from './script.ts';
 import { runAssertions } from './assert.ts';
 import { allRuntimeVars, runtimeLookup, setRuntimeVars } from './runtime-vars.ts';
@@ -18,6 +19,7 @@ import type {
   RedirectHop,
   RequestSpec,
   SendResult,
+  StreamStats,
   TestResult,
 } from '../../shared/collections.ts';
 
@@ -31,6 +33,8 @@ export interface SendOptions {
   files?: Map<string, File[]>;
   /** variables to interpolate ({{…}}), usually the active environment */
   vars?: Record<string, string>;
+  /** called with each piece of generated text when the response is a stream */
+  onStreamChunk?: (text: string) => void;
 }
 
 /** Script-set vars → environment → chained responses → vault fields.
@@ -301,10 +305,33 @@ export async function sendRequest(
       const isRedirect = REDIRECT_STATUSES.has(res.status) && !!location;
       if (!isRedirect || !settings.followRedirects || hop >= settings.maxRedirects) {
         const ttfbMs = Date.now() - started;
-        const buf = await res.arrayBuffer();
-        const size = buf.byteLength;
-        const truncated = size > BODY_CAP;
-        const text = new TextDecoder().decode(truncated ? buf.slice(0, BODY_CAP) : buf);
+
+        let text: string;
+        let size: number;
+        let truncated: boolean;
+        let stream: StreamStats | undefined;
+        let streamText: string | undefined;
+
+        if (isStreaming(res)) {
+          // Read it as it arrives: the interesting numbers (TTFT, tokens/s)
+          // only exist while the stream is open.
+          const streamed = await readStream(res, {
+            onChunk: opts.onStreamChunk,
+            maxBytes: BODY_CAP,
+            startedAt: started,
+          });
+          text = streamed.body;
+          size = streamed.size;
+          truncated = streamed.truncated;
+          stream = streamed.stats;
+          streamText = streamed.text;
+        } else {
+          const buf = await res.arrayBuffer();
+          size = buf.byteLength;
+          truncated = size > BODY_CAP;
+          text = new TextDecoder().decode(truncated ? buf.slice(0, BODY_CAP) : buf);
+        }
+
         const result: SendResult = {
           ok: res.ok,
           status: res.status,
@@ -317,6 +344,8 @@ export async function sendRequest(
           ttfbMs,
           redirects,
           setCookies,
+          stream,
+          streamText,
         };
         // ─── post-response script + assertions ───────────────────────────
         if (spec.scripts?.post?.trim()) {
@@ -336,6 +365,8 @@ export async function sendRequest(
               json: safeJson(result.body),
               latencyMs: result.latencyMs,
               size: result.size,
+              streamText: result.streamText,
+              stream: result.stream,
             },
             vars: { ...(opts.vars ?? {}), ...allRuntimeVars() },
             envVars: { ...(opts.vars ?? {}) },

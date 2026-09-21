@@ -20,12 +20,15 @@ import { collectionsRouter } from './routes/collections.ts';
 import { sendRouter } from './routes/send.ts';
 import { oauthApiRouter, oauthCallbackRouter } from './routes/oauth.ts';
 import { runnerRouter } from './routes/runner.ts';
+import { matrixRouter } from './routes/matrix.ts';
+import { quotaRouter } from './routes/quota.ts';
 import { benchmarkRouter } from './routes/benchmark.ts';
 import { addSocket, broadcast, socketCount } from './routes/ws.ts';
 import { isMirrorEnabled, loadStore, setChangeEmitter, setMarkSelfWriteHook } from './core/store.ts';
 import { loadCollections, setCollectionsChangeEmitter } from './core/collections.ts';
 import { setTokenChangeEmitter } from './core/oauth2.ts';
 import { setRunEmitter } from './core/collection-runner.ts';
+import { setMatrixEmitter } from './core/matrix.ts';
 import { markSelfWrite, setExternalChangeListener, startWatcher } from './core/watcher.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
 import type { WSEvent } from '../shared/types.ts';
@@ -57,6 +60,8 @@ app.route('/api/collections', collectionsRouter);
 app.route('/api/send', sendRouter);
 app.route('/api/oauth', oauthApiRouter);
 app.route('/api/runner', runnerRouter);
+app.route('/api/matrix', matrixRouter);
+app.route('/api/quota', quotaRouter);
 // Registered before the SPA catch-all: this is the URL registered with the
 // OAuth provider, so it must not fall through to index.html.
 app.route('/oauth', oauthCallbackRouter);
@@ -99,6 +104,12 @@ setTokenChangeEmitter((tokenId) => broadcast({ type: 'oauth:token', tokenId }));
 
 // Runner progress: one event per request, so a long run stays legible while
 // it is still going.
+setMatrixEmitter((event) => {
+  if (event.type === 'started') broadcast({ type: 'matrix:started', run: event.run });
+  else if (event.type === 'item') broadcast({ type: 'matrix:item', runId: event.runId, item: event.item });
+  else broadcast({ type: 'matrix:done', run: event.run });
+});
+
 setRunEmitter((event) => {
   if (event.type === 'started') broadcast({ type: 'run:started', run: event.run });
   else if (event.type === 'item') broadcast({ type: 'run:item', runId: event.runId, item: event.item });

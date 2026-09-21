@@ -238,6 +238,17 @@ export async function setStatus(
   changed();
 }
 
+export async function setQuota(id: string, quota: KeyEntry['quota']): Promise<void> {
+  const keys = await loadStore();
+  const idx = keys.findIndex((k) => k.id === id);
+  if (idx === -1) return;
+  keys[idx].quota = quota;
+  keys[idx].updatedAt = new Date().toISOString();
+  // like status: store.json only, never mirrored into keys.md
+  await persist();
+  changed();
+}
+
 // ─── keys.md mirror ────────────────────────────────────────────────────────
 // Mirror is OFF by default to prevent the writer from destroying unparsed
 // content (account info, example code, free-form notes) in keys.md. Enable

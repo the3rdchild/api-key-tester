@@ -199,7 +199,12 @@ export function ClientView() {
               />
 
               <div style={{ width: `${(1 - split) * 100}%` }} className="min-w-0">
-                <ResponsePane result={active.result} error={active.error} sending={active.sending} />
+                <ResponsePane
+                  result={active.result}
+                  error={active.error}
+                  sending={active.sending}
+                  liveStream={active.streamText}
+                />
               </div>
             </>
           ) : (

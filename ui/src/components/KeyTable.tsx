@@ -44,12 +44,13 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onSend
     <div className="h-full overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <table className="min-w-full table-fixed border-collapse">
         <colgroup>
-          <col className="w-[30%]" />
-          <col className="w-[21%]" />
+          <col className="w-[26%]" />
+          <col className="w-[16%]" />
           <col className="w-[10%]" />
           <col className="w-[8%]" />
-          <col className="w-[9%]" />
-          <col className="w-[12%]" />
+          <col className="w-[8%]" />
+          <col className="w-[11%]" />
+          <col className="w-[11%]" />
           <col className="w-[10%]" />
         </colgroup>
         <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
@@ -60,6 +61,7 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onSend
             <Th onClick={() => toggleSort('state')} active={sortKey === 'state'} asc={sortAsc}>Status</Th>
             <Th onClick={() => toggleSort('latency')} active={sortKey === 'latency'} asc={sortAsc}>Latency</Th>
             <Th onClick={() => toggleSort('testedAt')} active={sortKey === 'testedAt'} asc={sortAsc}>Last tested</Th>
+            <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Quota</th>
             <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Actions</th>
           </tr>
         </thead>
@@ -104,6 +106,22 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onSend
                 </td>
                 <td className="px-4 py-2 text-xs text-slate-500">
                   {k.status.testedAt ? new Date(k.status.testedAt).toLocaleString() : '-'}
+                </td>
+                <td className="px-4 py-2 text-xs">
+                  {k.quota ? (
+                    <span
+                      className={k.quota.error ? 'text-amber-600' : 'text-slate-600 dark:text-slate-300'}
+                      title={
+                        k.quota.error
+                          ? k.quota.error
+                          : `${k.quota.detail ? k.quota.detail + ' · ' : ''}checked ${new Date(k.quota.checkedAt).toLocaleString()}`
+                      }
+                    >
+                      {k.quota.summary}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   {k.testable && (

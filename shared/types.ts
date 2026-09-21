@@ -2,7 +2,13 @@
 // Keep this file dependency-free so it can be imported anywhere.
 // (The API-client domain - collections, requests - lives in collections.ts.)
 
-import type { ReqHistoryEntry, RunItemResult, RunSummary } from './collections.ts';
+import type {
+  MatrixItem,
+  MatrixSummary,
+  ReqHistoryEntry,
+  RunItemResult,
+  RunSummary,
+} from './collections.ts';
 
 export type Provider =
   // OpenAI-compatible family
@@ -45,6 +51,21 @@ export interface TestStatus {
   raw?: string;
 }
 
+/** Credit / quota left on a key, when the provider exposes it cheaply. */
+export interface QuotaInfo {
+  /** one-line summary for the table, e.g. "$4.12 of $10 left" */
+  summary: string;
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  /** USD, characters, requests, … */
+  unit?: string;
+  /** extra context: tier name, rate limit, free-tier flag */
+  detail?: string;
+  checkedAt: string;
+  error?: string;
+}
+
 export interface KeyEntry {
   id: string;
   provider: Provider;
@@ -57,6 +78,8 @@ export interface KeyEntry {
   /** false for entries that are pure account/password info (claude-pro, db passwords) */
   testable: boolean;
   status: TestStatus;
+  /** last quota probe, when the provider supports one */
+  quota?: QuotaInfo;
   /** ISO timestamps */
   createdAt: string;
   updatedAt: string;
@@ -112,6 +135,10 @@ export type WSEvent =
   | { type: 'run:started'; run: RunSummary }
   | { type: 'run:item'; runId: string; item: RunItemResult }
   | { type: 'run:done'; run: RunSummary }
+  | { type: 'stream:chunk'; streamId: string; text: string }
+  | { type: 'matrix:started'; run: MatrixSummary }
+  | { type: 'matrix:item'; runId: string; item: MatrixItem }
+  | { type: 'matrix:done'; run: MatrixSummary }
   | { type: 'req-history:appended'; entry: ReqHistoryEntry };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {

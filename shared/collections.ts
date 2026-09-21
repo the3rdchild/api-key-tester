@@ -189,6 +189,20 @@ export interface CollectionsFile {
   requests: Record<string, RequestSpec>;
 }
 
+/** Measurements that only mean something for a streamed response. */
+export interface StreamStats {
+  /** transport chunks read off the socket */
+  chunks: number;
+  /** content deltas seen - a rough token count */
+  deltas: number;
+  /** the stream ended cleanly (saw [DONE] or the body closed) */
+  finished: boolean;
+  /** time to first content token */
+  ttftMs?: number;
+  /** deltas per second, measured from the first delta onward */
+  tokensPerSecond?: number;
+}
+
 export interface RedirectHop {
   status: number;
   from: string;
@@ -220,6 +234,10 @@ export interface SendResult {
   logs?: string[];
   /** a script threw or timed out (distinct from a failing test) */
   scriptError?: string;
+  /** present when the response was an event stream */
+  stream?: StreamStats;
+  /** the generated text with SSE framing stripped */
+  streamText?: string;
 }
 
 export interface RunCheck {
@@ -254,6 +272,41 @@ export interface RunSummary {
   durationMs: number;
   cancelled?: boolean;
   items: RunItemResult[];
+}
+
+/** One cell of a matrix run: this request, against this key/model. */
+export interface MatrixTarget {
+  label?: string;
+  /** vault key to authenticate with */
+  keyId?: string;
+  /** becomes {{model}} for this cell */
+  model?: string;
+  /** becomes {{baseURL}} for this cell */
+  baseURL?: string;
+}
+
+export interface MatrixItem {
+  label: string;
+  keyId?: string;
+  model?: string;
+  status?: number;
+  ok: boolean;
+  latencyMs?: number;
+  ttftMs?: number;
+  tokensPerSecond?: number;
+  size?: number;
+  error?: string;
+  /** first part of the answer, so the table shows something readable */
+  preview?: string;
+}
+
+export interface MatrixSummary {
+  id: string;
+  startedAt: string;
+  finishedAt?: string;
+  requestName: string;
+  total: number;
+  items: MatrixItem[];
 }
 
 export interface ReqHistoryEntry {

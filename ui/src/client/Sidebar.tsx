@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import type { EnvironmentDef, KV, TreeNode } from '../../../shared/collections.ts';
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function Sidebar({ state, onToast }: Props) {
+  const [importOpen, setImportOpen] = useState(false);
   const [open, setOpen] = useState<Record<Panel, boolean>>({
     collections: true,
     environment: false,
@@ -42,6 +44,11 @@ export function Sidebar({ state, onToast }: Props) {
           <>
             <MiniButton icon="fa-file-circle-plus" label="New request" onClick={() => state.newTab()} />
             <MiniButton icon="fa-folder-plus" label="New folder" onClick={addFolder} />
+            <MiniButton
+              icon="fa-file-import"
+              label="Import Postman / Insomnia / OpenAPI"
+              onClick={() => setImportOpen(true)}
+            />
           </>
         }
       />
@@ -127,6 +134,14 @@ export function Sidebar({ state, onToast }: Props) {
           )}
         </div>
       )}
+      <ImportCollectionDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(msg) => {
+          onToast(msg);
+          void state.reloadCollections();
+        }}
+      />
     </aside>
   );
 }

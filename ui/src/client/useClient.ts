@@ -32,6 +32,8 @@ export interface Tab {
   note?: string;
   /** OAuth2 refused to send: the browser step is still pending */
   needsAuth?: boolean;
+  /** text accumulated from a streamed response while it is still arriving */
+  streamText?: string;
   error?: string;
   /** multipart files live in memory only - they can't be serialised */
   files: Record<string, File[]>;
@@ -147,9 +149,22 @@ export function useClient() {
       };
       ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(ev.data as string) as { type: string; entry?: ReqHistoryEntry };
+          const msg = JSON.parse(ev.data as string) as {
+            type: string;
+            entry?: ReqHistoryEntry;
+            streamId?: string;
+            text?: string;
+          };
           if (msg.type === 'collections:changed') reloadCollections().catch(() => {});
           if (msg.type === 'oauth:token') setTokenTick((n) => n + 1);
+          if (msg.type === 'stream:chunk' && msg.streamId) {
+            // The stream id is the tab id, so chunks land in the tab that asked.
+            setTabs((prev) =>
+              prev.map((t) =>
+                t.id === msg.streamId ? { ...t, streamText: (t.streamText ?? '') + msg.text } : t,
+              ),
+            );
+          }
           if (msg.type === 'req-history:appended' && msg.entry) {
             setHistory((prev) => [msg.entry!, ...prev].slice(0, 200));
           }
@@ -247,9 +262,9 @@ export function useClient() {
     async (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) return;
-      patchTab(tabId, { sending: true, error: undefined });
+      patchTab(tabId, { sending: true, error: undefined, streamText: '' });
       try {
-        const res: SendResponse = await clientApi.send(tab.spec, tab.files);
+        const res: SendResponse = await clientApi.send(tab.spec, tab.files, tabId);
         patchTab(tabId, {
           sending: false,
           result: res.result,

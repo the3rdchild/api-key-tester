@@ -201,8 +201,8 @@ Layout tetap (tab penuh):
 | **M3** | Sandbox QuickJS + assertion + tab Tests | ✅ selesai |
 | **M4** | OAuth2 penuh (termasuk authorization_code + PKCE) | ✅ selesai |
 | **M5** | Collection runner + CLI + reporter | ✅ selesai — bisa dipakai di CI |
-| **M6** | Khas LLM: streaming SSE + token/detik, matrix run lintas key, kolom kuota | Yang tidak dimiliki Postman |
-| **M7** | Import Postman v2.1 / Insomnia / OpenAPI | Migrasi koleksi kantor |
+| **M6** | Khas LLM: streaming SSE + token/detik, matrix run lintas key, kolom kuota | ✅ selesai — yang tidak dimiliki Postman |
+| **M7** | Import Postman v2.1 / Insomnia / OpenAPI | ✅ selesai — migrasi koleksi kantor |
 
 ---
 
@@ -351,6 +351,51 @@ Keputusan saat implementasi:
 - **Nilai assertion sekarang ikut diinterpolasi** (`$.user.id eq {{expectedId}}`). Celah ini ketahuan waktu menulis fixture runner — sebelumnya hanya URL/header/body yang kena interpolasi.
 
 Folder contoh `Smoke` ditinggal di `collections.json` (3 request, lulus semua) sebagai titik awal.
+
+## 10g. Status M6 (selesai 2026-09-19)
+
+| Bagian | File | Bukti |
+|---|---|---|
+| Baca SSE + metrik | `server/core/stream.ts` | mock dengan jeda 300 ms: `ttftMs 315`, `tokensPerSecond 25.5`, 8 delta/9 chunk, teks tersambung utuh |
+| Chunk live ke UI | `routes/send.ts` + WS | 8 `stream:chunk` diterima klien, yang pertama pada 330 ms — sebelum request selesai |
+| Matrix run | `server/core/matrix.ts` | 6 key LLM dijalankan paralel (concurrency 3) ke `{{vault.baseURL}}/models`: semua 200, 2,6 detik total, diurut dari 124 ms sampai 2599 ms |
+| Kolom kuota | `server/core/quota-probe.ts` | 4 key yang providernya punya endpoint saldo dicek sungguhan (lihat temuan di bawah) |
+| UI | `ResponsePane`, `MatrixDialog`, `KeyTable` | tab **stream** dengan teks berjalan + TTFT/tok-s di status bar; dialog matrix dengan tabel banding; kolom Quota di vault |
+
+**Temuan dari fitur kuota (langsung kepakai):** key DeepSeek `l9F7gxik7iQe` menunjukkan
+`$0.00 left · not available for use` — itulah sebabnya uji streaming ke DeepSeek dijawab
+**402**. Dua key DeepSeek lain menjawab 401 "User not found", dan key ElevenLabs menolak
+dengan "missing the permission user_read". Jadi dari 4 key yang bisa diperiksa saldonya,
+tidak ada satu pun yang benar-benar siap pakai.
+
+Keputusan saat implementasi:
+
+- **TTFT diukur dari saat request dikirim, bukan dari saat reader mulai.** `fetch` di Bun baru resolve setelah byte pertama badan respons tiba, jadi mengukur lokal menghasilkan "2 ms" yang menyesatkan — jeda 300 ms-nya diam-diam pindah ke TTFB. Sekarang `readStream` menerima `startedAt` dari pipeline.
+- **tokens/detik dihitung sejak delta pertama**, bukan sejak request. Waktu tunggu sebelum token pertama itu latensi, bukan throughput; mencampurnya membuat provider lambat terlihat bagus.
+- **Delta di-extract toleran**: gaya OpenAI (`choices[].delta.content`), Anthropic (`content_block_delta`), Gemini (`candidates[].content.parts[]`), dan Ollama (`response`/`message.content`), dengan fallback teks polos.
+- **Matrix jalan paralel** (beda dari collection runner yang sengaja berurutan): sel-selnya independen, dan yang dibandingkan justru latensi — menjalankannya berurutan hanya menambahkan antrean satu sama lain ke angkanya.
+- **Kuota hanya untuk provider yang punya endpoint saldo murah** (OpenRouter, DeepSeek, ElevenLabs). Sisanya mengosongkan kolom, bukan menebak — angka karangan lebih buruk daripada sel kosong.
+- **Kuota disimpan di `store.json`, tidak pernah ikut ke `keys.md`** — perlakuan sama seperti `status`.
+
+## 10h. Status M7 (selesai 2026-09-21)
+
+| Format | File | Bukti |
+|---|---|---|
+| Postman collection v2.0/v2.1 | `server/core/import/postman.ts` | fixture 4 request: folder, query param (termasuk yang disabled), body raw/urlencoded/formdata/graphql, auth bearer + apikey, script diterjemahkan |
+| Postman environment | idem | 4 variabel terbaca, variabel bertipe `secret` diberi peringatan |
+| Insomnia v4 | `server/core/import/insomnia.ts` | resource flat disusun ulang jadi folder; `{{ _.var }}` → `{{var}}`; auth bearer/apikey |
+| OpenAPI 3.x (JSON) | `server/core/import/openapi.ts` | Petstore asli: **19 request** dalam 3 folder (pet/store/user), path param jadi `{{orderId}}`, env 4 variabel |
+| Swagger/OpenAPI YAML | idem (`yaml@2.9.1`) | Petstore YAML: 3 request, `{{petId}}`, body JSON dibangkitkan dari schema: `{"id": 0, "name": "", "tag": ""}` |
+
+Keputusan saat implementasi:
+
+- **Preview dulu, tulis kemudian.** File ekspor rutin membawa ratusan request; mengetahui apa yang masuk dengan cara membaca sidebar setelahnya bukan rencana. Dialog menampilkan format, jumlah, pohon folder, dan peringatan sebelum tombol Import bisa ditekan.
+- **Script Postman diterjemahkan sebisanya, sisanya ditandai.** `pm.environment.set/get`, `pm.variables.*`, `pm.response.json()/code/responseTime`, `pm.test`, `pm.expect` dipetakan ke `bru.*`/`test`/`expect`. Sisa `pm.*` (mis. `pm.sendRequest`) dibiarkan apa adanya, diberi komentar di kepala script, dan dicatat sebagai peringatan — lebih jujur daripada mengirim kode yang tidak bisa jalan.
+- **Folder Postman bisa bersarang dalam-dalam, pohon kita satu tingkat.** Folder dalam disimpan dengan nama berjalur (`Auth / Tokens`) supaya tidak ada request yang hilang.
+- **OpenAPI diberi isi, bukan sekadar kerangka.** Body dibangkitkan dari schema (contoh, default, enum pertama, lalu tipe), query param masuk sebagai baris (aktif kalau `required`), path param jadi `{{variabel}}` yang langsung disemai di environment, dan tiap request dapat assertion awal `status lt 400`.
+- **Yang tidak bisa dibawa, dikatakan.** Body biner/octet-stream, field file, tipe auth asing, dan variabel `secret` semuanya jadi peringatan di preview.
+
+Fixture uji (folder `pets` + env Petstore) sudah dibersihkan lagi dari `collections.json`.
 
 ## 11. Yang masih terbuka
 

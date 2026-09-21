@@ -127,18 +127,19 @@ export const clientApi = {
       method: 'DELETE',
     }).then((r) => json<{ ok: true }>(r)),
 
-  /** Send a request. Files (if any) travel as multipart so bytes never hit disk. */
-  send: (spec: RequestSpec, files?: Record<string, File[]>) => {
+  /** Send a request. Files (if any) travel as multipart so bytes never hit disk.
+   *  `streamId` opts into live chunks over /live for streamed responses. */
+  send: (spec: RequestSpec, files?: Record<string, File[]>, streamId?: string) => {
     const hasFiles = files && Object.values(files).some((list) => list.length > 0);
     if (!hasFiles) {
       return fetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spec }),
+        body: JSON.stringify({ spec, streamId }),
       }).then((r) => json<SendResponse>(r));
     }
     const form = new FormData();
-    form.append('spec', JSON.stringify({ spec }));
+    form.append('spec', JSON.stringify({ spec, streamId }));
     for (const [field, list] of Object.entries(files!)) {
       for (const file of list) form.append(`file:${field}`, file, file.name);
     }

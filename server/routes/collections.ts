@@ -20,6 +20,7 @@ import {
 import { listHistory, clearHistory } from '../core/req-history.ts';
 import { listCookies, clearCookies } from '../core/cookies.ts';
 import { importCurl } from '../core/import-curl.ts';
+import { applyImport, importAny, summarise } from '../core/import/index.ts';
 import { listRemembered } from '../core/responses.ts';
 import { emptyRequest } from '../../shared/collections.ts';
 import type { EnvironmentDef, RequestSpec } from '../../shared/collections.ts';
@@ -125,6 +126,32 @@ collectionsRouter.post('/import-curl', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { text?: string };
   if (!body.text?.trim()) return c.json({ error: 'Paste a curl command first' }, 400);
   return c.json(importCurl(body.text));
+});
+
+/** POST /api/collections/import/preview - parse a Postman / Insomnia /
+ *  OpenAPI file and report what an import would create. Writes nothing. */
+collectionsRouter.post('/import/preview', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+  if (!body.text?.trim()) return c.json({ error: 'Paste or upload a file first' }, 400);
+  try {
+    return c.json(summarise(importAny(body.text)));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+/** POST /api/collections/import - convert and merge into collections.json. */
+collectionsRouter.post('/import', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+  if (!body.text?.trim()) return c.json({ error: 'Paste or upload a file first' }, 400);
+  try {
+    const imported = importAny(body.text);
+    if (imported.format === 'unknown') return c.json({ error: imported.warnings[0] }, 400);
+    const result = await applyImport(imported);
+    return c.json({ ...result, format: imported.format, warnings: imported.warnings });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
 });
 
 /** GET /api/collections/chainable - requests whose last response can be

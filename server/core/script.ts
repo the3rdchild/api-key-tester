@@ -27,6 +27,9 @@ export interface ScriptResponse {
   json?: unknown;
   latencyMs: number;
   size: number;
+  /** streamed responses: the generated text, framing removed */
+  streamText?: string;
+  stream?: unknown;
 }
 
 export interface ScriptTest {
