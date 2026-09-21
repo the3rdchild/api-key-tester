@@ -9,7 +9,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import type { ServerWebSocket, WebSocketHandler } from 'bun';
+import type { ServerWebSocket } from 'bun';
 
 import { keysRouter } from './routes/keys.ts';
 import { testRouter } from './routes/test.ts';

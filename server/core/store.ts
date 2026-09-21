@@ -7,7 +7,7 @@ import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { HistoryEntry, KeyEntry } from '../../shared/types.ts';
-import { parseMarkdown, parsedToEntry, type ParsedEntry } from './parser.ts';
+import { parsedToEntry, type ParsedEntry } from './parser.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = resolve(__dirname, '../..');
@@ -143,7 +143,7 @@ export async function appendParsed(
   parsed: ParsedEntry[],
   opts: { dedup?: boolean; mergeExisting?: boolean } = {},
 ): Promise<ImportResult> {
-  const { dedup = true, mergeExisting = false } = opts;
+  const { mergeExisting = false } = opts;
   const keys = await loadStore();
 
   // build existence index

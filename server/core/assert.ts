@@ -4,7 +4,7 @@
 // API client actually needs (status, a field exists, latency budget), stays
 // diffable in collections.json, and runs in microseconds.
 
-import type { AssertOp, Assertion, AssertionResult } from '../../shared/collections.ts';
+import type { Assertion, AssertionResult } from '../../shared/collections.ts';
 
 export interface AssertTarget {
   status: number;

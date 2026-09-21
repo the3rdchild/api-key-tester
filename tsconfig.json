@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -12,15 +16,30 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
-    "noUnusedLocals": false,
+    "noUnusedLocals": true,
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["shared/*"],
-      "@server/*": ["server/*"]
+      "@shared/*": [
+        "shared/*"
+      ],
+      "@server/*": [
+        "server/*"
+      ]
     },
-    "types": ["bun-types"]
+    "types": [
+      "bun-types"
+    ],
+    "noUnusedParameters": true
   },
-  "include": ["shared/**/*", "server/**/*", "ui/src/**/*", "scripts/**/*"],
-  "exclude": ["node_modules", "ui/dist"]
+  "include": [
+    "shared/**/*",
+    "server/**/*",
+    "ui/src/**/*",
+    "scripts/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "ui/dist"
+  ]
 }

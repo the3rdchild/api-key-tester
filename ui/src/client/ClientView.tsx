@@ -104,6 +104,17 @@ export function ClientView({
     return () => window.removeEventListener('keydown', onKey);
   }, [active, state, showToast, requestSave]);
 
+  // ─── handover from the vault ──────────────────────────────────────────────
+  // The vault switches screens and hands over a request; this side has to open
+  // it. (It didn't, for a while: the props existed and nothing consumed them.)
+  useEffect(() => {
+    if (!pendingRequest) return;
+    state.newTab(pendingRequest);
+    onPendingConsumed?.();
+    // Only the handover itself should retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRequest]);
+
   // ─── draggable divider ────────────────────────────────────────────────────
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();

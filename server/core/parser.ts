@@ -72,8 +72,6 @@ function detectProviderFromContent(body: string): Provider | null {
   return null;
 }
 
-const KEY_VALUE_RE = /^([A-Z][A-Z0-9_]+)\s*=\s*(.+?)\s*$/;
-const COLON_RE = /^([A-Za-z][A-Za-z0-9 _-]*?)\s*[:：]\s*(.+?)\s*$/;
 // Match Authorization: Bearer xxx (with or without surrounding quotes, multiline-tolerant)
 const BEARER_RE = /Authorization:\s*Bearer\s+["']?([A-Za-z0-9_\-.:]+)["']?/i;
 const URL_IN_CURL_RE = /\bcurl\s+(?:-X\s+\w+\s+)?(https?:\/\/[^\s'"]+)/i;
@@ -323,8 +321,6 @@ function extractZAI(section: Section): ParsedEntry[] {
   //   API KEY ID : xxx
   //   API KEY : xxx.secret
   const idMatch = /API\s*KEY\s*ID\s*[:：]\s*([^\s]+)/i.exec(section.body);
-  const keyMatch = /API\s*KEY\s*[:：]\s*([^\s]+)/i.exec(section.body);
-  // the "API KEY ID" line will also match the generic "API KEY" pattern; skip it
   let secret: string | undefined;
   for (const line of section.body.split(/\r?\n/)) {
     if (/API\s*KEY\s*ID/i.test(line)) continue;

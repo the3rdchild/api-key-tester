@@ -21,7 +21,7 @@ export interface ExportResult {
   warnings: string[];
 }
 
-function childrenOf(file: CollectionsFile, node: TreeNode): string[] {
+function childrenOf(node: TreeNode): string[] {
   return node.children ?? [];
 }
 
@@ -224,7 +224,7 @@ export function toPostman(file: CollectionsFile, folderId?: string): ExportResul
     if (!folder) return null;
     return {
       name: folder.name ?? 'folder',
-      item: childrenOf(file, folder).map(build).filter(Boolean),
+      item: childrenOf(folder).map(build).filter(Boolean),
     };
   };
 
@@ -304,7 +304,7 @@ export function toHttpFile(file: CollectionsFile, folderId?: string): ExportResu
     }
     const folder = file.tree.find((n) => n.id === nodeId && n.type === 'folder');
     if (!folder) return;
-    for (const child of childrenOf(file, folder)) emit(child, [...path, folder.name ?? 'folder']);
+    for (const child of childrenOf(folder)) emit(child, [...path, folder.name ?? 'folder']);
   };
 
   if (folderId) emit(folderId, []);

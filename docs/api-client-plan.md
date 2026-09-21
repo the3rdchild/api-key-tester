@@ -439,6 +439,29 @@ sudah menulis varian `dark:`, jadi pekerjaannya tinggal sakelar dan disiplin:
 - Diperiksa dengan pemindaian: tidak ada permukaan terang (`bg-white`/`bg-slate-50`) maupun teks gelap (`text-slate-900`) yang tidak punya pasangan `dark:`. Layar Vault dan API client diperiksa langsung lewat screenshot dengan `ui.systemUsesDarkTheme`.
 - Sisa nama lama "Key Tester" di judul tab Vault ikut dibereskan jadi "Key vault".
 
+## 10l. Bug: tombol "Try in API client" tidak membuka apa pun (2026-09-21)
+
+**Gejala:** klik ikon kirim di tab Vault → layar berpindah ke API client, tapi tidak ada
+tab baru yang terbuka.
+
+**Sebabnya** ada di sisi penerima: `ClientView` **menerima** prop `pendingRequest` dan
+`onPendingConsumed`, tapi tidak pernah memakainya — `useEffect` yang seharusnya membuka
+tab tidak pernah masuk ke berkas. Patch yang menulisnya berpegang pada baris
+`localStorage.setItem(SPLIT_KEY, …)`, padahal baris itu sudah berubah jadi
+`saveLocal(SPLIT_KEY, …)` saat rename ke Keyway. Penggantian string-nya gagal tanpa
+bersuara, dan TypeScript tidak protes karena prop yang tidak terpakai waktu itu legal.
+
+**Perbaikan:** efeknya dipasang, lalu dibuktikan dengan menyuntik satu `pending` palsu —
+tab `POST uji handover` terbuka lengkap dengan URL, badge Headers dan Body json.
+
+**Supaya tidak terulang:** `noUnusedLocals` + `noUnusedParameters` dinyalakan di
+`tsconfig.json`. Diuji dengan menyimulasikan ulang bug-nya: tsc melaporkan
+`TS6198: All destructured elements are unused` di `ClientView.tsx:19` — jadi kelas bug ini
+sekarang ketahuan saat typecheck. Sembilan simbol mati yang menghalangi (sisa impor dari
+pemangkasan `keys.md`, regex tak terpakai di parser, dll.) ikut dibersihkan; perilaku
+parser diverifikasi tidak berubah dengan membandingkan keluarannya terhadap versi HEAD
+untuk tiga bentuk masukan.
+
 ## 11. Yang masih terbuka
 
 Keputusan lama yang sudah diambil (dipindahkan ke sini supaya daftarnya jujur):
