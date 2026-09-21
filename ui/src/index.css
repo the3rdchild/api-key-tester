@@ -6,6 +6,15 @@ html, body, #root {
   height: 100%;
 }
 
+/* Set alongside the `dark` class by lib/theme.ts - this is what makes native
+   widgets (select popups, scrollbars, date pickers) match the page. */
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }

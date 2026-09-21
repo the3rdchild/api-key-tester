@@ -2,10 +2,10 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initTheme } from './lib/theme.ts';
 
-// Default to dark mode (this is a secrets-management tool - dark feels right)
-const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-if (prefersDark) document.documentElement.classList.add('dark');
+// Before the first paint, so the page never flashes the wrong theme.
+initTheme();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

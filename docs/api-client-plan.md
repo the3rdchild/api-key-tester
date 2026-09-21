@@ -427,6 +427,18 @@ Fixture uji itu sudah dihapus lagi; data hasil impor milik pengguna tidak disent
 | **Garis indent** di pohon koleksi, satu garis per tingkat | folder bersarang sulit dibaca tanpa panduan visual, persis seperti di editor kode |
 | Hapus satu entri, salin URL — tombolnya melayang di atas baris saat hover | tombol yang memakan lebar mendorong jam dan status ke baris kedua |
 
+## 10k. Tema terang/gelap (2026-09-21)
+
+Tailwind sudah dikonfigurasi `darkMode: 'class'` sejak awal dan hampir semua komponen
+sudah menulis varian `dark:`, jadi pekerjaannya tinggal sakelar dan disiplin:
+
+- `ui/src/lib/theme.ts` — tiga pilihan: **light / dark / ikut sistem**, tersimpan lewat `storage.ts`.
+- Diterapkan **sebelum React render** (`initTheme()` di `main.tsx`), supaya tidak ada kedipan tema salah saat memuat.
+- `color-scheme` ikut di-set bersama kelas `dark` — tanpa itu, widget bawaan browser (popup `<select>`, scrollbar, date picker) tetap terang di halaman gelap.
+- Mode "ikut sistem" memasang listener `prefers-color-scheme` hanya selama mode itu aktif.
+- Diperiksa dengan pemindaian: tidak ada permukaan terang (`bg-white`/`bg-slate-50`) maupun teks gelap (`text-slate-900`) yang tidak punya pasangan `dark:`. Layar Vault dan API client diperiksa langsung lewat screenshot dengan `ui.systemUsesDarkTheme`.
+- Sisa nama lama "Key Tester" di judul tab Vault ikut dibereskan jadi "Key vault".
+
 ## 11. Yang masih terbuka
 
 Keputusan lama yang sudah diambil (dipindahkan ke sini supaya daftarnya jujur):

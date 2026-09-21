@@ -168,7 +168,7 @@ export function VaultView({ onTryInClient }: { onTryInClient: (entry: KeyEntry) 
       {/* Topbar */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold"><i className="fa-solid fa-key" /> Key Tester</h1>
+          <h1 className="text-xl font-bold"><i className="fa-solid fa-key" /> Key vault</h1>
           <span
             className={`inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-emerald-600' : 'text-slate-400'}`}
             title={wsConnected ? 'WebSocket connected - live updates' : 'WebSocket disconnected'}

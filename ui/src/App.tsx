@@ -8,6 +8,7 @@ import type { KeyEntry } from '../../shared/types.ts';
 import { RunnerView } from './client/RunnerView.tsx';
 import { VaultView } from './components/VaultView.tsx';
 import { loadLocal, saveLocal } from './lib/storage.ts';
+import { useTheme, type Theme } from './lib/theme.ts';
 
 type Screen = 'client' | 'runner' | 'vault';
 
@@ -15,6 +16,7 @@ const SCREEN_KEY = 'screen';
 
 /** App shell: the API client is the product, the key vault is a tab of it. */
 export default function App() {
+  const { theme, cycle } = useTheme();
   /** A request handed over from the vault, waiting for the client to open it. */
   const [pending, setPending] = useState<Partial<RequestSpec> | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
@@ -58,6 +60,8 @@ export default function App() {
         <ScreenTab active={screen === 'vault'} onClick={() => setScreen('vault')} icon="fa-key">
           Vault
         </ScreenTab>
+
+        <ThemeToggle theme={theme} onCycle={cycle} />
       </nav>
 
       <main className="min-h-0 flex-1">
@@ -68,6 +72,28 @@ export default function App() {
         {screen === 'vault' && <VaultView onTryInClient={(entry) => void handOver(entry)} />}
       </main>
     </div>
+  );
+}
+
+const THEME_META: Record<Theme, { icon: string; label: string; next: string }> = {
+  light: { icon: 'fa-sun', label: 'Light', next: 'dark' },
+  dark: { icon: 'fa-moon', label: 'Dark', next: 'system' },
+  system: { icon: 'fa-circle-half-stroke', label: 'System', next: 'light' },
+};
+
+function ThemeToggle({ theme, onCycle }: { theme: Theme; onCycle: () => void }) {
+  const meta = THEME_META[theme];
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      title={`Theme: ${meta.label} — click for ${meta.next}`}
+      aria-label={`Theme: ${meta.label}. Switch to ${meta.next}.`}
+      className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
+    >
+      <i className={`fa-solid ${meta.icon}`} />
+      <span className="hidden sm:inline">{meta.label}</span>
+    </button>
   );
 }
 

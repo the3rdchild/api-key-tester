@@ -75,6 +75,7 @@ Everything is stored in `collections.json` at the project root. It holds **no se
 
 - **Response views** — **Tree** (collapsible JSON; click a key to copy its path, e.g. `$.data.0.id`, straight into the Tests tab), Pretty, Raw, Headers, Cookies, plus Tests and Stream when they apply
 - **Command palette** — `Ctrl+K` (or `Alt+K`) searches saved requests, past responses and commands from one box
+- **Theme** — light, dark, or follow the system; the choice is remembered and applied before the first paint, so there is no flash of the wrong one
 
 Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar, `Alt+I` import cURL.
 
