@@ -120,6 +120,16 @@ export const clientApi = {
   historyDetail: (id: string) =>
     fetch(`${BASE}/history/${id}`).then((r) => json<HistoryDetail>(r)),
 
+  pinHistory: (id: string, pinned: boolean) =>
+    fetch(`${BASE}/history/${id}/pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned }),
+    }).then((r) => json<ReqHistoryEntry>(r)),
+
+  deleteHistoryEntry: (id: string) =>
+    fetch(`${BASE}/history/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
   clearHistory: () =>
     fetch(`${BASE}/history`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 

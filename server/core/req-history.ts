@@ -183,23 +183,82 @@ function countChecks(result: SendResult): { passed: number; total: number } | un
   return { passed: all.filter((c) => c.passed).length, total: all.length };
 }
 
-/** Keep only the newest MAX_ENTRIES lines, and drop the bodies that go with
- *  the lines being evicted. */
+/** Keep the newest MAX_ENTRIES lines *plus* every pinned one, and drop the
+ *  stored bodies of whatever gets evicted. Pinning is how an interesting
+ *  response survives a busy afternoon. */
 async function trim(): Promise<void> {
   if (!existsSync(REQ_HISTORY_PATH)) return;
   const lines = (await readFile(REQ_HISTORY_PATH, 'utf8')).split('\n').filter(Boolean);
   if (lines.length <= MAX_ENTRIES) return;
 
-  const dropped = lines.slice(0, lines.length - MAX_ENTRIES);
-  await writeFile(REQ_HISTORY_PATH, `${lines.slice(-MAX_ENTRIES).join('\n')}\n`, 'utf8');
-  for (const line of dropped) {
+  const parsed = lines.map((line) => {
     try {
-      const { id } = JSON.parse(line) as { id?: string };
-      if (id) await unlink(resolve(RESPONSE_DIR, `${id}.json`)).catch(() => {});
+      return { line, entry: JSON.parse(line) as ReqHistoryEntry };
     } catch {
-      /* corrupt line - nothing to clean up */
+      return { line, entry: null };
+    }
+  });
+
+  const unpinned = parsed.filter((p) => !p.entry?.pinned);
+  const evictCount = Math.max(0, lines.length - MAX_ENTRIES);
+  const evicted = new Set(unpinned.slice(0, evictCount).map((p) => p.line));
+  if (evicted.size === 0) return;
+
+  const kept = parsed.filter((p) => !evicted.has(p.line));
+  await writeFile(REQ_HISTORY_PATH, `${kept.map((p) => p.line).join('\n')}\n`, 'utf8');
+
+  for (const { line, entry } of parsed) {
+    // Match on the original line, not a re-serialised copy of it.
+    if (!entry?.id || !evicted.has(line)) continue;
+    await unlink(resolve(RESPONSE_DIR, `${entry.id}.json`)).catch(() => {});
+  }
+}
+
+/** Rewrite the log with one entry changed or removed. */
+async function rewrite(
+  id: string,
+  change: (entry: ReqHistoryEntry) => ReqHistoryEntry | null,
+): Promise<ReqHistoryEntry | null> {
+  if (!existsSync(REQ_HISTORY_PATH)) return null;
+  const lines = (await readFile(REQ_HISTORY_PATH, 'utf8')).split('\n').filter(Boolean);
+  let updated: ReqHistoryEntry | null = null;
+  const out: string[] = [];
+
+  for (const line of lines) {
+    let entry: ReqHistoryEntry;
+    try {
+      entry = JSON.parse(line) as ReqHistoryEntry;
+    } catch {
+      out.push(line);
+      continue;
+    }
+    if (entry.id !== id) {
+      out.push(line);
+      continue;
+    }
+    const next = change(entry);
+    if (next) {
+      updated = next;
+      out.push(JSON.stringify(next));
     }
   }
+
+  await writeFile(REQ_HISTORY_PATH, out.length ? `${out.join('\n')}\n` : '', 'utf8');
+  return updated;
+}
+
+export async function setPinned(id: string, pinned: boolean): Promise<ReqHistoryEntry | null> {
+  return rewrite(id, (entry) => ({ ...entry, pinned }));
+}
+
+export async function deleteEntry(id: string): Promise<boolean> {
+  let found = false;
+  await rewrite(id, () => {
+    found = true;
+    return null;
+  });
+  if (found) await unlink(resolve(RESPONSE_DIR, `${id}.json`)).catch(() => {});
+  return found;
 }
 
 export async function listHistory(limit = MAX_ENTRIES): Promise<ReqHistoryEntry[]> {

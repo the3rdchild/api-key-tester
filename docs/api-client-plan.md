@@ -415,6 +415,16 @@ Bukti: impor ulang file PIMS yang sama menghasilkan `folders: 5, requests: 23, e
 pohon `PIMS uji-coba → {Live / Real-time (4), Historical — 1 Day (14), Historical — Raw (4), Tag Reference (1)}`.
 Fixture uji itu sudah dihapus lagi; data hasil impor milik pengguna tidak disentuh.
 
+## 10j. History yang menyimpan response + berkelompok per hari (2026-09-21)
+
+| Perubahan | Kenapa |
+|---|---|
+| Response utuh disimpan per entri (`.history-bodies/<id>.json`, cap 256 KB) | dulu yang tersimpan hanya potongan 4 KB untuk daftar, jadi klik entri lama tidak mengembalikan jawabannya |
+| Tab mengingat `historyId`, dipulihkan saat halaman dimuat ulang | reload dulu menghapus response yang sedang dilihat |
+| Dikelompokkan per hari: **Today / Yesterday / tanggal**, tiap baris membawa jam + latensi + status | "kapan request ini pernah dikirim" sebelumnya tidak terjawab sama sekali |
+| **Pin** per entri — tidak ikut tergusur saat log dipangkas | entri menarik hilang begitu 200 request terlampaui |
+| Hapus satu entri, salin URL — tombolnya melayang di atas baris saat hover | tombol yang memakan lebar mendorong jam dan status ke baris kedua |
+
 ## 11. Yang masih terbuka
 
 Keputusan lama yang sudah diambil (dipindahkan ke sini supaya daftarnya jujur):

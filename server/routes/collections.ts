@@ -17,7 +17,13 @@ import {
   deleteEnvironment,
   setActiveEnvironment,
 } from '../core/collections.ts';
-import { listHistory, clearHistory, getHistoryDetail } from '../core/req-history.ts';
+import {
+  clearHistory,
+  deleteEntry,
+  getHistoryDetail,
+  listHistory,
+  setPinned,
+} from '../core/req-history.ts';
 import { listCookies, clearCookies } from '../core/cookies.ts';
 import { importCurl } from '../core/import-curl.ts';
 import { applyImport, importAny, summarise } from '../core/import/index.ts';
@@ -116,6 +122,19 @@ collectionsRouter.get('/history/:id', async (c) => {
   const detail = await getHistoryDetail(c.req.param('id'));
   if (!detail) return c.json({ error: 'No stored response for that entry' }, 404);
   return c.json(detail);
+});
+
+/** POST /api/collections/history/:id/pin - keep an entry through trimming. */
+collectionsRouter.post('/history/:id/pin', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { pinned?: boolean };
+  const entry = await setPinned(c.req.param('id'), body.pinned !== false);
+  if (!entry) return c.json({ error: 'not found' }, 404);
+  return c.json(entry);
+});
+
+collectionsRouter.delete('/history/:id', async (c) => {
+  const ok = await deleteEntry(c.req.param('id'));
+  return ok ? c.json({ ok: true }) : c.json({ error: 'not found' }, 404);
 });
 
 collectionsRouter.delete('/history', async (c) => {

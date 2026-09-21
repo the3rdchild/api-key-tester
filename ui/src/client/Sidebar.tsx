@@ -6,7 +6,13 @@ import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { clientApi } from '../lib/clientApi.ts';
-import type { CollectionsFile, EnvironmentDef, KV, TreeNode } from '../../../shared/collections.ts';
+import type {
+  CollectionsFile,
+  EnvironmentDef,
+  KV,
+  ReqHistoryEntry,
+  TreeNode,
+} from '../../../shared/collections.ts';
 import type { ClientState } from './useClient.ts';
 
 type Panel = 'collections' | 'environment' | 'history';
@@ -128,43 +134,13 @@ export function Sidebar({ state, onToast }: Props) {
           {state.history.length === 0 ? (
             <p className="px-2 py-3 text-xs text-slate-400">No requests sent yet.</p>
           ) : (
-            state.history.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => void state.openFromHistory(entry)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
-              >
-                <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">
-                  {entry.method}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{entry.url}</span>
-                {entry.checks && (
-                  <span
-                    className={`shrink-0 font-mono text-[10px] ${
-                      entry.checks.passed === entry.checks.total ? 'text-emerald-600' : 'text-red-500'
-                    }`}
-                    title={`${entry.checks.passed} of ${entry.checks.total} checks passed`}
-                  >
-                    {entry.checks.passed}/{entry.checks.total}
-                  </span>
-                )}
-                <span
-                  className={`shrink-0 font-mono ${
-                    entry.error
-                      ? 'text-red-500'
-                      : (entry.status ?? 0) >= 400
-                        ? 'text-amber-600'
-                        : 'text-emerald-600'
-                  }`}
-                >
-                  {entry.error ? 'err' : entry.status}
-                </span>
-              </button>
+            groupByDay(state.history).map((group) => (
+              <HistoryGroup key={group.key} group={group} state={state} onToast={onToast} />
             ))
           )}
         </div>
       )}
+
       <ImportCollectionDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
@@ -504,6 +480,167 @@ function EnvironmentPanel({ state, onToast }: { state: ClientState; onToast: (m:
           Create an environment to use <code className="font-mono">{'{{vars}}'}</code> in requests.
         </p>
       )}
+    </div>
+  );
+}
+
+interface DayGroup {
+  key: string;
+  label: string;
+  entries: ReqHistoryEntry[];
+}
+
+/** Newest first, split into days. "Today"/"Yesterday" read faster than a date
+ *  when that is what you actually mean. */
+function groupByDay(entries: ReqHistoryEntry[]): DayGroup[] {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+  const groups = new Map<string, DayGroup>();
+  for (const entry of entries) {
+    const when = new Date(entry.ts);
+    const key = dayKey(when);
+    const label =
+      key === dayKey(today)
+        ? 'Today'
+        : key === dayKey(yesterday)
+          ? 'Yesterday'
+          : when.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const group = groups.get(key) ?? { key, label, entries: [] };
+    group.entries.push(entry);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function HistoryGroup({
+  group,
+  state,
+  onToast,
+}: {
+  group: DayGroup;
+  state: ClientState;
+  onToast: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const pinned = group.entries.filter((e) => e.pinned).length;
+
+  return (
+    <div className="mb-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+      >
+        <i className={`fa-solid ${open ? 'fa-chevron-down' : 'fa-chevron-right'} w-3 text-slate-400`} />
+        {group.label}
+        <span className="ml-auto flex items-center gap-2 text-slate-400">
+          {pinned > 0 && (
+            <span className="text-amber-500" title={`${pinned} pinned`}>
+              <i className="fa-solid fa-thumbtack text-[9px]" /> {pinned}
+            </span>
+          )}
+          <span>{group.entries.length}</span>
+        </span>
+      </button>
+
+      {open &&
+        group.entries.map((entry) => (
+          <HistoryRow key={entry.id} entry={entry} state={state} onToast={onToast} />
+        ))}
+    </div>
+  );
+}
+
+function HistoryRow({
+  entry,
+  state,
+  onToast,
+}: {
+  entry: ReqHistoryEntry;
+  state: ClientState;
+  onToast: (msg: string) => void;
+}) {
+  const time = new Date(entry.ts).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <div className="group relative flex items-center gap-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+      <button
+        type="button"
+        onClick={() => void state.openFromHistory(entry)}
+        title={`${entry.method} ${entry.url}\n${new Date(entry.ts).toLocaleString()}`}
+        className="min-w-0 flex-1 rounded px-2 py-1 text-left text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500"
+      >
+        {/* The URL gets a line of its own: in a 288px sidebar, sharing it with
+            the status and the time left room for about eight characters. */}
+        <span className="flex items-baseline gap-2">
+          <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">
+            {entry.method}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{entry.url}</span>
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap pl-12 text-[10px] text-slate-400">
+          {entry.pinned && <i className="fa-solid fa-thumbtack text-[8px] text-amber-500" />}
+          <span>{time}</span>
+          {entry.latencyMs != null && <span>· {entry.latencyMs} ms</span>}
+          {entry.checks && (
+            <span
+              className={`font-mono ${
+                entry.checks.passed === entry.checks.total ? 'text-emerald-600' : 'text-red-500'
+              }`}
+            >
+              · {entry.checks.passed}/{entry.checks.total}
+            </span>
+          )}
+          <span
+            className={`ml-auto font-mono ${
+              entry.error
+                ? 'text-red-500'
+                : (entry.status ?? 0) >= 400
+                  ? 'text-amber-600'
+                  : 'text-emerald-600'
+            }`}
+          >
+            {entry.error ? 'err' : entry.status}
+          </span>
+        </span>
+      </button>
+
+      {/* Actions float over the row instead of taking layout width - otherwise
+          three buttons push the time and status onto a second line. */}
+      <span className="invisible absolute right-1 top-1/2 flex -translate-y-1/2 rounded bg-slate-100 shadow-sm group-hover:visible dark:bg-slate-800">
+        <MiniButton
+          icon="fa-thumbtack"
+          label={entry.pinned ? 'Unpin this entry' : 'Pin: keep it when older entries are dropped'}
+          onClick={async () => {
+            await clientApi.pinHistory(entry.id, !entry.pinned);
+            await state.reloadHistory();
+            onToast(entry.pinned ? 'Unpinned' : 'Pinned');
+          }}
+        />
+        <MiniButton
+          icon="fa-copy"
+          label="Copy URL"
+          onClick={() => {
+            navigator.clipboard.writeText(entry.url).catch(() => {});
+            onToast('URL copied');
+          }}
+        />
+        <MiniButton
+          icon="fa-trash"
+          label="Delete this entry"
+          onClick={async () => {
+            await clientApi.deleteHistoryEntry(entry.id);
+            await state.reloadHistory();
+          }}
+        />
+      </span>
     </div>
   );
 }

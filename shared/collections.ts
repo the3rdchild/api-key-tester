@@ -327,6 +327,8 @@ export interface ReqHistoryEntry {
   responsePreview?: string;
   /** how the tests/assertions went, when the request had any */
   checks?: { passed: number; total: number };
+  /** pinned entries are never evicted when the log is trimmed */
+  pinned?: boolean;
 }
 
 /** A history entry with the response body kept alongside it. */
