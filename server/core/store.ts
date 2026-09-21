@@ -273,22 +273,6 @@ async function trimHistory(): Promise<void> {
   }
 }
 
-export async function getHistory(keyId?: string): Promise<HistoryEntry[]> {
-  if (!existsSync(HISTORY_PATH)) return [];
-  const raw = await readFile(HISTORY_PATH, 'utf8');
-  const lines = raw.split(/\r?\n/).filter(Boolean);
-  const all: HistoryEntry[] = [];
-  for (const l of lines) {
-    try {
-      const h = JSON.parse(l) as HistoryEntry;
-      if (!keyId || h.keyId === keyId) all.push(h);
-    } catch {
-      /* skip malformed */
-    }
-  }
-  return all;
-}
-
 // Reset in-memory cache (for watcher tests / reload)
 export function _resetCacheForTests(): void {
   memKeys = null;

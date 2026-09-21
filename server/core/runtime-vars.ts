@@ -8,20 +8,12 @@ import type { VarLookup } from './vars.ts';
 
 const runtime = new Map<string, string>();
 
-export function setRuntimeVar(key: string, value: string): void {
-  runtime.set(key, value);
-}
-
 export function setRuntimeVars(vars: Record<string, string>): void {
   for (const [k, v] of Object.entries(vars)) runtime.set(k, v);
 }
 
 export function allRuntimeVars(): Record<string, string> {
   return Object.fromEntries(runtime);
-}
-
-export function clearRuntimeVars(): void {
-  runtime.clear();
 }
 
 export function runtimeLookup(): VarLookup {

@@ -462,6 +462,24 @@ pemangkasan `keys.md`, regex tak terpakai di parser, dll.) ikut dibersihkan; per
 parser diverifikasi tidak berubah dengan membandingkan keluarannya terhadap versi HEAD
 untuk tiga bentuk masukan.
 
+### Audit lanjutan setelah bug itu (2026-09-21)
+
+Karena satu patch bisa gagal diam-diam, periode yang sama disisir dengan pemeriksaan silang:
+
+| Yang diperiksa | Hasil |
+|---|---|
+| Endpoint yang dipanggil UI vs rute yang benar-benar terpasang di server | cocok semua |
+| `CustomEvent` dispatch vs listener (jalur palette → dialog sidebar) | berpasangan semua |
+| `onClick` kosong | tidak ada |
+| Prop dideklarasikan tapi tak dipakai | dijaga permanen oleh `noUnusedLocals`/`noUnusedParameters` |
+| Call-site tiap fitur batch itu (drag-drop, rename, dialog Save, tombol variabel, palette, export, Tree, preview biner, tema) | hidup semua |
+| Ekspor `server/core` yang tak pernah diimpor | 4 memang mati (`setRuntimeVar`, `clearRuntimeVars`, `getHistory`, `ensureDataDir`) → dihapus |
+
+Perubahan kecil yang menyertai: ikon baris di tab Vault diganti dari pesawat kertas ke
+panah-keluar (artinya sekarang "buka di API client", bukan "kirim test"), dan seluruh 23
+request PIMS dinaikkan timeout-nya ke 60 detik — gateway-nya pernah menjawab 200 dalam
+14,7 detik, terlalu mepet ke batas 30 detik.
+
 ## 11. Yang masih terbuka
 
 Keputusan lama yang sudah diambil (dipindahkan ke sini supaya daftarnya jujur):

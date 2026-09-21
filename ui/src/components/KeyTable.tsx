@@ -138,9 +138,9 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onTryI
                     <button
                       onClick={() => onTryInClient(k)}
                       className="mr-2 text-indigo-600 hover:text-indigo-800"
-                      title="Send a test request (editable)"
+                      title="Open this key as a request in the API client"
                     >
-                      <i className="fa-solid fa-paper-plane" />
+                      <i className="fa-solid fa-arrow-up-right-from-square" />
                     </button>
                   )}
                   <button
