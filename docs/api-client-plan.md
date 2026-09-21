@@ -1,4 +1,4 @@
-# 🧪 Rencana Pivot — dari Key Tester ke API Client
+# 🥝 Rencana Pivot — dari Key Tester ke Keyway
 
 > **Tujuan:** menjadikan project ini API client lokal pengganti Postman (dan pengganti ekstensi Apier di Zen), dengan vault key yang sudah ada sebagai fitur pendukung — bukan sebaliknya.
 
@@ -298,8 +298,8 @@ Keputusan saat implementasi:
 `bun install` di host **mandek** di mount NTFS ini (proses tidur, 16 MB tertulis dalam 7 menit, lockfile tak tersentuh). Solusinya: install di dalam container, yang `node_modules`-nya ada di volume Docker — selesai dalam 74 detik.
 
 ```bash
-docker compose exec key-tester bun install       # setelah mengubah package.json
-docker compose exec key-tester bunx tsc --noEmit # typecheck ikut di container
+docker compose exec keyway bun install       # setelah mengubah package.json
+docker compose exec keyway bunx tsc --noEmit # typecheck ikut di container
 ```
 
 Konsekuensinya: `node_modules` di host tertinggal (tidak punya `quickjs-emscripten` maupun CodeMirror), jadi `bun run dev` dari host tidak akan jalan sampai install host berhasil. Mode container tetap penuh.
@@ -347,7 +347,7 @@ Keputusan saat implementasi:
 - **Berurutan, bukan paralel.** Satu run biasanya sebuah alur (login dulu, baru pakai tokennya), dan chaining hanya bermakna kalau urutannya terjaga. Paralel menukar properti yang justru jadi alasan runner ini ada dengan sedikit kecepatan.
 - **Request dari runner tidak masuk `requests-history.jsonl`.** Satu run folder berisi 30 request akan menggusur seluruh history manual yang cuma menyimpan 200 entri.
 - **Kriteria lulus:** tidak ada error transport, script tidak melempar, dan semua check hijau. Kalau request tidak punya assertion sama sekali, status HTTP non-2xx dihitung gagal — kalau kamu memang mengharapkan 404, tulis assertion-nya.
-- **CLI berdiri sendiri**, membaca `collections.json` langsung tanpa server. Jadi bisa dipanggil di CI tanpa menyalakan panel: `docker compose exec key-tester bun scripts/run.ts Smoke --bail`.
+- **CLI berdiri sendiri**, membaca `collections.json` langsung tanpa server. Jadi bisa dipanggil di CI tanpa menyalakan panel: `docker compose exec keyway bun scripts/run.ts Smoke --bail`.
 - **Nilai assertion sekarang ikut diinterpolasi** (`$.user.id eq {{expectedId}}`). Celah ini ketahuan waktu menulis fixture runner — sebelumnya hanya URL/header/body yang kena interpolasi.
 
 Folder contoh `Smoke` ditinggal di `collections.json` (3 request, lulus semua) sebagai titik awal.
@@ -440,6 +440,6 @@ Sisa yang benar-benar terbuka, per 2026-09-21:
 **C. Kebersihan & keamanan**
 
 9. **Belum ada cadangan `collections.json`.** Tulisannya sudah atomik (tmp → rename), tapi satu file ini sumber tunggal untuk semua koleksi.
-10. **Nama produk** — repo masih `key-tester` padahal vault tinggal satu dari tiga tab.
+10. ~~**Nama produk**~~ — ✅ 2026-09-21: produk dan repo jadi **Keyway**, dengan ikon irisan kiwi (`ui/public/favicon.svg`). Kunci localStorage lama (`key-tester.*`) masih dibaca sebagai cadangan lewat `ui/src/lib/storage.ts`, jadi tab yang sedang terbuka tidak hilang.
 11. **Panel masih tanpa autentikasi** — aman selama bind loopback; butuh token kalau suatu saat ditunnel keluar.
 12. **`keys.md` tidak ada di folder ini**, jadi parser/writer/watcher-nya menganggur meski diputuskan dipertahankan.

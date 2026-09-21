@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
+import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { clientApi } from '../lib/clientApi.ts';
 import type { CollectionsFile, EnvironmentDef, KV, TreeNode } from '../../../shared/collections.ts';
 import type { ClientState } from './useClient.ts';
 
 type Panel = 'collections' | 'environment' | 'history';
 
-const EXPAND_KEY = 'key-tester.client.folder.';
+const EXPAND_KEY = 'client.folder.';
 
 interface Props {
   state: ClientState;
@@ -194,22 +195,14 @@ function FolderRow({
   // be 23 requests deep, and expanding all of it on every load buries the rest
   // of the sidebar.
   const [expanded, setExpanded] = useState(() => {
-    try {
-      return localStorage.getItem(`${EXPAND_KEY}${folder.id}`) === '1';
-    } catch {
-      return false;
-    }
+    return loadLocal(`${EXPAND_KEY}${folder.id}`) === '1';
   });
   const [renaming, setRenaming] = useState(false);
 
   const toggleExpanded = () =>
     setExpanded((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(`${EXPAND_KEY}${folder.id}`, next ? '1' : '0');
-      } catch {
-        /* private window - the tree just forgets, which is survivable */
-      }
+      saveLocal(`${EXPAND_KEY}${folder.id}`, next ? '1' : '0');
       return next;
     });
 

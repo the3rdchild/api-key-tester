@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { clientApi, type SendResponse } from '../lib/clientApi.ts';
+import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { api } from '../lib/api.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import { emptyRequest } from '../../../shared/collections.ts';
@@ -17,7 +18,7 @@ import type {
   SendResult,
 } from '../../../shared/collections.ts';
 
-const TABS_KEY = 'key-tester.client.tabs.v1';
+const TABS_KEY = 'client.tabs.v1';
 
 export interface Tab {
   id: string;
@@ -70,7 +71,7 @@ function freshTab(spec?: Partial<RequestSpec>): Tab {
 
 function restore(): Persisted {
   try {
-    const raw = localStorage.getItem(TABS_KEY);
+    const raw = loadLocal(TABS_KEY);
     if (!raw) return { tabs: [], activeId: null };
     return JSON.parse(raw) as Persisted;
   } catch {
@@ -119,11 +120,7 @@ export function useClient() {
       })),
       activeId,
     };
-    try {
-      localStorage.setItem(TABS_KEY, JSON.stringify(payload));
-    } catch {
-      /* quota - not worth breaking the app over */
-    }
+    saveLocal(TABS_KEY, JSON.stringify(payload));
   }, [tabs, activeId]);
 
   const reloadCollections = useCallback(async () => {

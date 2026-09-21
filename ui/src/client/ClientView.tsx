@@ -9,15 +9,16 @@ import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { useClient } from './useClient.ts';
+import { loadLocal, saveLocal } from '../lib/storage.ts';
 
-const SPLIT_KEY = 'key-tester.client.split';
+const SPLIT_KEY = 'client.split';
 
 export function ClientView() {
   const state = useClient();
   const [toast, setToast] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [split, setSplit] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(SPLIT_KEY));
+    const saved = Number(loadLocal(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
   });
   const splitRef = useRef<HTMLDivElement | null>(null);
@@ -96,7 +97,7 @@ export function ClientView() {
   };
 
   useEffect(() => {
-    localStorage.setItem(SPLIT_KEY, String(split));
+    saveLocal(SPLIT_KEY, String(split));
   }, [split]);
 
   return (

@@ -1,8 +1,10 @@
-# 🔑 API Key Tester
+# 🥝 Keyway
 
 ![Home](docs/home.png)
 
-Local-first web app for **testing, managing, and exporting** API keys for LLM providers, tool APIs, and object storage.
+A local-first API client — the Postman replacement — with a key vault built in.
+
+The app opens on the **API client**; the vault that started this project is now one of its three tabs.
 
 ## Quick start
 
@@ -65,7 +67,7 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Sidebar** — folders nest, and both folders and requests rename in place (pencil, or double-click). Folders start collapsed and remember what you opened
 - **Copy as curl** — exactly what was sent, auth included
 
-Dependencies are installed **inside the container** (`docker compose exec key-tester bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec key-tester bunx tsc --noEmit`.
+Dependencies are installed **inside the container** (`docker compose exec keyway bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec keyway bunx tsc --noEmit`.
 
 Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth references a key by id, and OAuth2 tokens live in `oauth-tokens.json` (gitignored) — the collection keeps only endpoints, client id and scope.
 
@@ -74,10 +76,10 @@ Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar, `A
 ### Running a collection from the terminal
 
 ```bash
-docker compose exec key-tester bun scripts/run.ts --list          # what is runnable
-docker compose exec key-tester bun scripts/run.ts Smoke           # run one folder
-docker compose exec key-tester bun scripts/run.ts Smoke --bail    # stop at the first failure
-docker compose exec key-tester bun scripts/run.ts --reporter junit --out report.xml
+docker compose exec keyway bun scripts/run.ts --list          # what is runnable
+docker compose exec keyway bun scripts/run.ts Smoke           # run one folder
+docker compose exec keyway bun scripts/run.ts Smoke --bail    # stop at the first failure
+docker compose exec keyway bun scripts/run.ts --reporter junit --out report.xml
 ```
 
 The CLI reads `collections.json` directly — no server needed — and exits non-zero when anything failed, so CI can judge it by the exit code alone. `--env <name>` picks an environment, `--request <name>` runs a single request, `--delay <ms>` paces the run.

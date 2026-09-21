@@ -1,9 +1,9 @@
 services:
-  key-tester:
+  keyway:
     build:
       context: .
-    image: key-tester:local
-    container_name: key-tester
+    image: keyway:local
+    container_name: keyway
 
     # WAJIB sejak project ini dipakai sebagai API tester umum, bukan sekadar
     # penguji key cloud. Docker di mesin ini rootless; dalam mode bridge,
@@ -53,7 +53,7 @@ services:
       # Menutupi node_modules host dengan hasil `bun install` dari image.
       # Setelah mengubah package.json:
       #   docker compose build && docker compose up -d --force-recreate
-      #   docker volume rm key-tester_node_modules   # bila perlu install ulang
+      #   docker volume rm keyway_node_modules   # bila perlu install ulang
       - node_modules:/app/node_modules
 
     healthcheck:

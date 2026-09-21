@@ -1,9 +1,9 @@
 {
-  "name": "key-tester",
+  "name": "keyway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local-first API key tester & manager",
+  "description": "Local-first API client with a key vault",
   "scripts": {
     "dev": "node dev.mjs",
     "dev:server": "bun --watch server/index.ts",

@@ -1,29 +1,31 @@
 import { useEffect, useState } from 'react';
 
 import { ClientView } from './client/ClientView.tsx';
+import { KiwiMark } from './client/KiwiMark.tsx';
 import { RunnerView } from './client/RunnerView.tsx';
 import { VaultView } from './components/VaultView.tsx';
+import { loadLocal, saveLocal } from './lib/storage.ts';
 
 type Screen = 'client' | 'runner' | 'vault';
 
-const SCREEN_KEY = 'key-tester.screen';
+const SCREEN_KEY = 'screen';
 
 /** App shell: the API client is the product, the key vault is a tab of it. */
 export default function App() {
   const [screen, setScreen] = useState<Screen>(() => {
-    const saved = localStorage.getItem(SCREEN_KEY);
+    const saved = loadLocal(SCREEN_KEY);
     return saved === 'vault' || saved === 'runner' ? saved : 'client';
   });
 
   useEffect(() => {
-    localStorage.setItem(SCREEN_KEY, screen);
+    saveLocal(SCREEN_KEY, screen);
   }, [screen]);
 
   return (
     <div className="flex h-full flex-col">
       <nav className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900">
-        <span className="mr-2 text-sm font-bold">
-          <i className="fa-solid fa-paper-plane text-indigo-500" /> key-tester
+        <span className="mr-2 flex items-center gap-1.5 text-sm font-bold">
+          <KiwiMark className="h-4 w-4" /> Keyway
         </span>
         <ScreenTab active={screen === 'client'} onClick={() => setScreen('client')} icon="fa-bolt">
           API client

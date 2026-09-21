@@ -158,7 +158,7 @@ oauthCallbackRouter.get('/callback', async (c) => {
           const body = await res.json();
           document.querySelector('h1').textContent = res.ok ? 'Token received' : 'Authorization failed';
           document.querySelector('p').textContent = res.ok
-            ? 'You can close this tab and go back to key-tester.'
+            ? 'You can close this tab and go back to Keyway.'
             : (body.error || 'Unknown error');
         })();
       `,
@@ -173,7 +173,7 @@ oauthCallbackRouter.get('/callback', async (c) => {
     return c.html(
       page(
         'Token received',
-        'You can close this tab and go back to key-tester — the request is ready to send.',
+        'You can close this tab and go back to Keyway — the request is ready to send.',
         'ok',
         'setTimeout(() => window.close(), 1500);',
       ),

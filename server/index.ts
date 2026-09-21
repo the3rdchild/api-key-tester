@@ -197,7 +197,7 @@ const server = Bun.serve<undefined>({
   },
 });
 
-console.log(`\n  key-tester → http://${HOST}:${PORT}`);
+console.log(`\n  Keyway → http://${HOST}:${PORT}`);
 console.log(`  UI (dev)   → http://localhost:5174`);
 console.log(`  WebSocket  → ws://${HOST}:${PORT}/live`);
 console.log(

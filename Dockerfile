@@ -1,4 +1,4 @@
-# key-tester jalan di atas Bun, bukan Node: server/index.ts memakai Bun.serve +
+# Keyway jalan di atas Bun, bukan Node: server/index.ts memakai Bun.serve +
 # WebSocket bawaan Bun, dan TS dieksekusi langsung tanpa transpile step.
 FROM oven/bun:1.3-slim
 

@@ -122,7 +122,7 @@ function junit(summary: RunSummary): string {
     })
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="key-tester" tests="${summary.total}" failures="${summary.failed}" time="${(
+<testsuites name="keyway" tests="${summary.total}" failures="${summary.failed}" time="${(
     summary.durationMs / 1000
   ).toFixed(3)}">
   <testsuite name="${esc(summary.label)}" tests="${summary.total}" failures="${summary.failed}" skipped="${summary.skipped}" time="${(

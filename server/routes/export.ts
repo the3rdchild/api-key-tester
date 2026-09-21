@@ -42,7 +42,7 @@ exportRouter.get('/', async (c) => {
 });
 
 function toEnv(keys: Awaited<ReturnType<typeof getAllKeys>>): string {
-  const out: string[] = ['# Exported by key-tester', '# Each block separated by a comment header is one entry.', ''];
+  const out: string[] = ['# Exported by keyway', '# Each block separated by a comment header is one entry.', ''];
   for (const k of keys) {
     if (!k.testable) continue;
     // group each entry under a header comment so parseEnv can re-attach label + baseURL

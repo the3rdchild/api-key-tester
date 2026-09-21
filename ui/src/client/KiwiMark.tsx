@@ -1,0 +1,25 @@
+// The Keyway mark: a kiwi slice. Kept as plain shapes (no gradients, no
+// strokes) so it still reads at 16px in a browser tab.
+
+export function KiwiMark({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" className={className} role="img" aria-label="Keyway">
+      <circle cx="32" cy="32" r="30" fill="#8c6239" />
+      <circle cx="32" cy="32" r="26.5" fill="#b4894f" />
+      <circle cx="32" cy="32" r="24" fill="#a8d24f" />
+      <circle cx="32" cy="32" r="8.5" fill="#f2f6e2" />
+      <g fill="#23301a">
+    <ellipse cx="32.00" cy="14.50" rx="1.5" ry="2.6" transform="rotate(0.0 32.00 14.50)" />
+    <ellipse cx="42.29" cy="17.84" rx="1.5" ry="2.6" transform="rotate(36.0 42.29 17.84)" />
+    <ellipse cx="48.64" cy="26.59" rx="1.5" ry="2.6" transform="rotate(72.0 48.64 26.59)" />
+    <ellipse cx="48.64" cy="37.41" rx="1.5" ry="2.6" transform="rotate(108.0 48.64 37.41)" />
+    <ellipse cx="42.29" cy="46.16" rx="1.5" ry="2.6" transform="rotate(144.0 42.29 46.16)" />
+    <ellipse cx="32.00" cy="49.50" rx="1.5" ry="2.6" transform="rotate(180.0 32.00 49.50)" />
+    <ellipse cx="21.71" cy="46.16" rx="1.5" ry="2.6" transform="rotate(216.0 21.71 46.16)" />
+    <ellipse cx="15.36" cy="37.41" rx="1.5" ry="2.6" transform="rotate(252.0 15.36 37.41)" />
+    <ellipse cx="15.36" cy="26.59" rx="1.5" ry="2.6" transform="rotate(288.0 15.36 26.59)" />
+    <ellipse cx="21.71" cy="17.84" rx="1.5" ry="2.6" transform="rotate(324.0 21.71 17.84)" />
+      </g>
+    </svg>
+  );
+}
