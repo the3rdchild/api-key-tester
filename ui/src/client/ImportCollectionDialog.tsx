@@ -39,6 +39,9 @@ interface Props {
 export function ImportCollectionDialog({ open, onClose, onImported }: Props) {
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
+  /** everything lands inside this folder unless the wrapper is switched off */
+  const [folderName, setFolderName] = useState('');
+  const [wrap, setWrap] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -50,6 +53,8 @@ export function ImportCollectionDialog({ open, onClose, onImported }: Props) {
     setPreview(null);
     setError(null);
     setExpanded(null);
+    setFolderName('');
+    setWrap(true);
   };
 
   const inspect = async (content: string) => {
@@ -65,8 +70,12 @@ export function ImportCollectionDialog({ open, onClose, onImported }: Props) {
         body: JSON.stringify({ text: content }),
       });
       const body = (await res.json()) as Preview & { error?: string };
-      if (!res.ok || body.error) setError(body.error ?? 'Could not read that file');
-      else setPreview(body);
+      if (!res.ok || body.error) {
+        setError(body.error ?? 'Could not read that file');
+      } else {
+        setPreview(body);
+        setFolderName(body.name);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -85,20 +94,24 @@ export function ImportCollectionDialog({ open, onClose, onImported }: Props) {
       const res = await fetch('/api/collections/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, name: wrap ? folderName : '' }),
       });
       const body = (await res.json()) as {
         requests?: number;
         folders?: number;
         environments?: number;
+        environmentsMerged?: number;
         error?: string;
       };
       if (!res.ok || body.error) {
         setError(body.error ?? 'Import failed');
         return;
       }
+      const merged = body.environmentsMerged
+        ? `, ${body.environmentsMerged} environment(s) merged`
+        : '';
       onImported(
-        `Imported ${body.requests} request(s), ${body.folders} folder(s), ${body.environments} environment(s)`,
+        `Imported ${body.requests} request(s), ${body.folders} folder(s), ${body.environments} environment(s)${merged}`,
       );
       reset();
       onClose();
@@ -177,6 +190,32 @@ export function ImportCollectionDialog({ open, onClose, onImported }: Props) {
                   {preview.environments.length === 1 ? '' : 's'}
                 </span>
               </div>
+
+              {preview.total > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2 dark:border-slate-800">
+                  <input
+                    id="import-wrap"
+                    type="checkbox"
+                    checked={wrap}
+                    onChange={(e) => setWrap(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 dark:border-slate-600 dark:bg-slate-800"
+                  />
+                  <label htmlFor="import-wrap" className="cursor-pointer text-xs text-slate-600 dark:text-slate-300">
+                    Put everything in a folder called
+                  </label>
+                  <input
+                    aria-label="Folder name for this import"
+                    value={folderName}
+                    disabled={!wrap}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    className="h-8 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                  />
+                  <span className="w-full text-[11px] text-slate-400">
+                    Its own folders become subfolders of this one, so a second import never mixes
+                    with the first. You can rename it later in the sidebar.
+                  </span>
+                </div>
+              )}
 
               {preview.warnings.length > 0 && (
                 <ul className="mt-2 grid gap-1 rounded bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">

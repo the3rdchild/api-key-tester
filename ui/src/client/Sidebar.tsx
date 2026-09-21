@@ -5,14 +5,24 @@ import { useEffect, useRef, useState } from 'react';
 import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
-import type { EnvironmentDef, KV, TreeNode } from '../../../shared/collections.ts';
+import type { CollectionsFile, EnvironmentDef, KV, TreeNode } from '../../../shared/collections.ts';
 import type { ClientState } from './useClient.ts';
 
 type Panel = 'collections' | 'environment' | 'history';
 
+const EXPAND_KEY = 'key-tester.client.folder.';
+
 interface Props {
   state: ClientState;
   onToast: (msg: string) => void;
+}
+
+/** Top-level nodes: the ones no folder holds as a child. Folders can now nest,
+ *  so "everything in file.tree" would render subfolders twice. */
+function rootNodes(file: CollectionsFile): TreeNode[] {
+  const nested = new Set<string>();
+  for (const node of file.tree) for (const child of node.children ?? []) nested.add(child);
+  return file.tree.filter((n) => !nested.has(n.id));
 }
 
 export function Sidebar({ state, onToast }: Props) {
@@ -53,14 +63,14 @@ export function Sidebar({ state, onToast }: Props) {
         }
       />
       {open.collections && (
-        <div className="max-h-[40%] overflow-auto px-1 pb-2">
+        <div className="max-h-[55%] min-h-0 overflow-auto px-1 pb-2">
           {!file || file.tree.length === 0 ? (
             <p className="px-2 py-3 text-xs text-slate-400">
               Nothing saved yet. Hit <i className="fa-solid fa-floppy-disk" /> on a request to keep it.
             </p>
           ) : (
-            file.tree.map((node) => (
-              <TreeRow key={node.id} node={node} state={state} onToast={onToast} />
+            rootNodes(file).map((node) => (
+              <TreeNodeRow key={node.id} nodeId={node.id} state={state} onToast={onToast} depth={0} />
             ))
           )}
         </div>
@@ -146,52 +156,127 @@ export function Sidebar({ state, onToast }: Props) {
   );
 }
 
-function TreeRow({
-  node,
+/** One node of the tree: a request, or a folder with its own children. */
+function TreeNodeRow({
+  nodeId,
   state,
   onToast,
+  depth,
 }: {
-  node: TreeNode;
+  nodeId: string;
   state: ClientState;
   onToast: (msg: string) => void;
+  depth: number;
 }) {
-  const [expanded, setExpanded] = useState(true);
   const file = state.collections;
   if (!file) return null;
 
-  if (node.type === 'request') {
-    const spec = file.requests[node.id];
-    if (!spec) return null;
-    return <RequestRow id={node.id} state={state} onToast={onToast} depth={0} />;
-  }
+  const spec = file.requests[nodeId];
+  if (spec) return <RequestRow id={nodeId} state={state} onToast={onToast} depth={depth} />;
+
+  const folder = file.tree.find((n) => n.id === nodeId && n.type === 'folder');
+  if (!folder) return null;
+  return <FolderRow folder={folder} state={state} onToast={onToast} depth={depth} />;
+}
+
+function FolderRow({
+  folder,
+  state,
+  onToast,
+  depth,
+}: {
+  folder: TreeNode;
+  state: ClientState;
+  onToast: (msg: string) => void;
+  depth: number;
+}) {
+  // Collapsed by default and remembered per folder: an imported collection can
+  // be 23 requests deep, and expanding all of it on every load buries the rest
+  // of the sidebar.
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(`${EXPAND_KEY}${folder.id}`) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [renaming, setRenaming] = useState(false);
+
+  const toggleExpanded = () =>
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(`${EXPAND_KEY}${folder.id}`, next ? '1' : '0');
+      } catch {
+        /* private window - the tree just forgets, which is survivable */
+      }
+      return next;
+    });
+
+  const addSubfolder = async () => {
+    const name = window.prompt('Name for the new folder inside ' + (folder.name ?? ''));
+    if (!name) return;
+    await clientApi.createFolder(name, folder.id);
+    await state.reloadCollections();
+    setExpanded(true);
+  };
 
   return (
     <div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setExpanded((e) => !e)}
-          aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <i className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} w-3 text-slate-400`} />
-          <i className="fa-solid fa-folder text-amber-500" />
-          <span className="truncate">{node.name}</span>
-        </button>
-        <MiniButton
-          icon="fa-trash"
-          label={`Delete folder ${node.name}`}
-          onClick={async () => {
-            if (!window.confirm(`Delete folder "${node.name}" and its requests?`)) return;
-            await clientApi.deleteFolder(node.id);
-            await state.reloadCollections();
-            onToast('Folder deleted');
-          }}
-        />
+      <div className="group flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
+        {renaming ? (
+          <RenameInput
+            initial={folder.name ?? ''}
+            onCancel={() => setRenaming(false)}
+            onSave={async (name) => {
+              setRenaming(false);
+              await clientApi.rename(folder.id, name);
+              await state.reloadCollections();
+            }}
+          />
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={toggleExpanded}
+              onDoubleClick={() => setRenaming(true)}
+              aria-expanded={expanded}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+            >
+              <i
+                className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'} w-3 text-slate-400`}
+              />
+              <i className="fa-solid fa-folder text-amber-500" />
+              <span className="truncate">{folder.name}</span>
+              <span className="ml-auto pl-1 text-[10px] text-slate-400">
+                {folder.children?.length ?? 0}
+              </span>
+            </button>
+            <MiniButton icon="fa-pen" label={`Rename ${folder.name}`} onClick={() => setRenaming(true)} />
+            <MiniButton icon="fa-folder-plus" label={`New folder inside ${folder.name}`} onClick={addSubfolder} />
+            <MiniButton
+              icon="fa-trash"
+              label={`Delete folder ${folder.name}`}
+              onClick={async () => {
+                if (!window.confirm(`Delete "${folder.name}" and everything inside it?`)) return;
+                await clientApi.deleteFolder(folder.id);
+                await state.reloadCollections();
+                onToast('Folder deleted');
+              }}
+            />
+          </>
+        )}
       </div>
+
       {expanded &&
-        (node.children ?? []).map((childId) => (
-          <RequestRow key={childId} id={childId} state={state} onToast={onToast} depth={1} />
+        (folder.children ?? []).map((childId) => (
+          <TreeNodeRow
+            key={childId}
+            nodeId={childId}
+            state={state}
+            onToast={onToast}
+            depth={depth + 1}
+          />
         ))}
     </div>
   );
@@ -208,37 +293,86 @@ function RequestRow({
   onToast: (msg: string) => void;
   depth: number;
 }) {
+  const [renaming, setRenaming] = useState(false);
   const spec = state.collections?.requests[id];
   if (!spec) return null;
+
   return (
     <div className="group flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
-      <button
-        type="button"
-        onClick={() => state.openRequest(spec)}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
-      >
-        <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">{spec.method}</span>
-        <span className="truncate">{spec.name}</span>
-      </button>
-      <MiniButton
-        icon="fa-copy"
-        label={`Duplicate ${spec.name}`}
-        onClick={async () => {
-          await clientApi.duplicateRequest(id);
-          await state.reloadCollections();
-        }}
-      />
-      <MiniButton
-        icon="fa-trash"
-        label={`Delete ${spec.name}`}
-        onClick={async () => {
-          if (!window.confirm(`Delete "${spec.name}"?`)) return;
-          await clientApi.deleteRequest(id);
-          await state.reloadCollections();
-          onToast('Request deleted');
-        }}
-      />
+      {renaming ? (
+        <RenameInput
+          initial={spec.name}
+          onCancel={() => setRenaming(false)}
+          onSave={async (name) => {
+            setRenaming(false);
+            await clientApi.rename(id, name);
+            await state.reloadCollections();
+          }}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => state.openRequest(spec)}
+            onDoubleClick={() => setRenaming(true)}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+          >
+            <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">{spec.method}</span>
+            <span className="truncate">{spec.name}</span>
+          </button>
+          <MiniButton icon="fa-pen" label={`Rename ${spec.name}`} onClick={() => setRenaming(true)} />
+          <MiniButton
+            icon="fa-copy"
+            label={`Duplicate ${spec.name}`}
+            onClick={async () => {
+              await clientApi.duplicateRequest(id);
+              await state.reloadCollections();
+            }}
+          />
+          <MiniButton
+            icon="fa-trash"
+            label={`Delete ${spec.name}`}
+            onClick={async () => {
+              if (!window.confirm(`Delete "${spec.name}"?`)) return;
+              await clientApi.deleteRequest(id);
+              await state.reloadCollections();
+              onToast('Request deleted');
+            }}
+          />
+        </>
+      )}
     </div>
+  );
+}
+
+/** Inline rename: Enter saves, Escape cancels, blur saves. */
+function RenameInput({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <input
+      autoFocus
+      aria-label="New name"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (value.trim()) onSave(value.trim());
+          else onCancel();
+        }
+        if (e.key === 'Escape') onCancel();
+      }}
+      onBlur={() => (value.trim() && value !== initial ? onSave(value.trim()) : onCancel())}
+      className="mx-1 h-7 w-full rounded border border-indigo-400 bg-white px-2 text-xs dark:bg-slate-800"
+    />
   );
 }
 

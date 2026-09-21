@@ -61,7 +61,8 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Matrix run** — send the current request across several vault keys (and models) at once and compare status, latency, TTFT and answer side by side. The body writes `{{model}}`, the URL writes `{{vault.baseURL}}`, and each cell fills them in from its own key
 - **Quota column** — for providers that expose a balance cheaply (OpenRouter, DeepSeek, ElevenLabs), the vault shows what is left; the rest stay empty rather than guessed
 - **Runner** — run a folder in order (variables set by one request are there for the next), with live progress, per-assertion detail and a "rerun failed" button
-- **Import** — Postman collections and environments, Insomnia v4 exports, and OpenAPI/Swagger documents (JSON or YAML). Preview shows the folders, counts and anything that can't be carried over before a single request is written; OpenAPI bodies are generated from the schema so the first send is one edit away
+- **Import** — Postman collections and environments, Insomnia v4 exports, and OpenAPI/Swagger documents (JSON or YAML). Preview shows the folders, counts and anything that can't be carried over before a single request is written; OpenAPI bodies are generated from the schema so the first send is one edit away. Everything lands inside one folder named after the collection (editable before importing), so a second import never mixes with the first, and an environment that already exists gains the new variables instead of being duplicated
+- **Sidebar** — folders nest, and both folders and requests rename in place (pencil, or double-click). Folders start collapsed and remember what you opened
 - **Copy as curl** — exactly what was sent, auth included
 
 Dependencies are installed **inside the container** (`docker compose exec key-tester bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec key-tester bunx tsc --noEmit`.

@@ -140,14 +140,15 @@ collectionsRouter.post('/import/preview', async (c) => {
   }
 });
 
-/** POST /api/collections/import - convert and merge into collections.json. */
+/** POST /api/collections/import - convert and merge into collections.json.
+ *  `name` renames the wrapper folder; pass an empty string for no wrapper. */
 collectionsRouter.post('/import', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string; name?: string };
   if (!body.text?.trim()) return c.json({ error: 'Paste or upload a file first' }, 400);
   try {
     const imported = importAny(body.text);
     if (imported.format === 'unknown') return c.json({ error: imported.warnings[0] }, 400);
-    const result = await applyImport(imported);
+    const result = await applyImport(imported, { parentName: body.name });
     return c.json({ ...result, format: imported.format, warnings: imported.warnings });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

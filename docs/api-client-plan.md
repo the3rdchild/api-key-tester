@@ -397,6 +397,24 @@ Keputusan saat implementasi:
 
 Fixture uji (folder `pets` + env Petstore) sudah dibersihkan lagi dari `collections.json`.
 
+## 10i. Lanjutan M7 — folder bersarang, rename, dan impor yang rapi (2026-09-21)
+
+Dipicu oleh impor koleksi PIMS Honeywell yang nyata (23 request, 4 folder): folder-foldernya
+mendarat langsung di tingkat atas, bercampur dengan koleksi lain.
+
+| Perubahan | File | Kenapa |
+|---|---|---|
+| Folder boleh berisi folder | `core/collections.ts`, `core/collection-runner.ts` | prasyarat untuk membungkus impor; penghapusan folder kini menyapu seluruh subtree, runner berjalan depth-first |
+| Impor dibungkus satu folder | `core/import/index.ts` | tiap impor punya rumah sendiri; folder asalnya jadi subfolder |
+| Nama folder tujuan bisa diedit sebelum impor | `ui/src/client/ImportCollectionDialog.tsx` | nama koleksi asal sering panjang/berbeda dari yang kamu mau |
+| **Rename di sidebar** (folder & request) | `ui/src/client/Sidebar.tsx` | celah lama: endpoint `PATCH /nodes/:id` sudah ada sejak M1, tombolnya tidak pernah dipasang — jadi nama request hanya bisa diubah lewat API |
+| Folder tertutup secara default, pilihannya diingat | idem | 23 request yang terbuka semua mengubur sisa sidebar |
+| Environment sama-nama digabung, bukan dikembarkan | `core/import/index.ts` | impor ulang file yang sama itu normal (API berubah, ekspor diperbarui); dua environment bernama sama tidak |
+
+Bukti: impor ulang file PIMS yang sama menghasilkan `folders: 5, requests: 23, environments: 1` dengan
+pohon `PIMS uji-coba → {Live / Real-time (4), Historical — 1 Day (14), Historical — Raw (4), Tag Reference (1)}`.
+Fixture uji itu sudah dihapus lagi; data hasil impor milik pengguna tidak disentuh.
+
 ## 11. Yang masih terbuka
 
 1. **Nama produk** — repo masih `key-tester`, padahal vault cuma satu tab.

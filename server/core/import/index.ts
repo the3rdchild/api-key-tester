@@ -6,6 +6,7 @@
 
 import {
   createFolder,
+  loadCollections,
   saveEnvironment,
   saveRequest,
 } from '../collections.ts';
@@ -45,14 +46,41 @@ export function importAny(text: string): ImportedCollection {
 export interface ApplyResult {
   folders: number;
   requests: number;
+  /** environments created */
   environments: number;
+  /** environments that already existed and gained the missing variables */
+  environmentsMerged: number;
+  /** the wrapper folder everything landed in, when one was used */
+  parentId?: string;
 }
 
-export async function applyImport(imported: ImportedCollection): Promise<ApplyResult> {
-  const result: ApplyResult = { folders: 0, requests: 0, environments: 0 };
+export interface ApplyOptions {
+  /**
+   * Wrap the whole import in one folder with this name. Without it, a
+   * collection's own folders land at top level and three imports later the
+   * sidebar is a flat pile with no clue which file each folder came from.
+   * Pass an empty string to opt out.
+   */
+  parentName?: string;
+}
+
+export async function applyImport(
+  imported: ImportedCollection,
+  opts: ApplyOptions = {},
+): Promise<ApplyResult> {
+  const result: ApplyResult = { folders: 0, requests: 0, environments: 0, environmentsMerged: 0 };
+
+  const wrapName = opts.parentName === undefined ? imported.name : opts.parentName;
+  let parentId: string | undefined;
+  if (wrapName.trim() && (imported.folders.length || imported.rootRequests.length)) {
+    const parent = await createFolder(wrapName.trim());
+    parentId = parent.id;
+    result.parentId = parent.id;
+    result.folders++;
+  }
 
   for (const folder of imported.folders) {
-    const node = await createFolder(folder.name);
+    const node = await createFolder(folder.name, parentId);
     result.folders++;
     for (const spec of folder.requests) {
       await saveRequest(spec, node.id);
@@ -61,13 +89,29 @@ export async function applyImport(imported: ImportedCollection): Promise<ApplyRe
   }
 
   for (const spec of imported.rootRequests) {
-    await saveRequest(spec);
+    await saveRequest(spec, parentId);
     result.requests++;
   }
 
+  // Re-importing a file is normal (the API changed, the export was updated).
+  // Creating a second environment with the same name every time is not - merge
+  // in the variables that are missing and leave existing values alone.
+  const file = await loadCollections();
   for (const env of imported.environments) {
-    await saveEnvironment(env);
-    result.environments++;
+    const existing = file.environments.find(
+      (e) => e.name.trim().toLowerCase() === env.name.trim().toLowerCase(),
+    );
+    if (!existing) {
+      await saveEnvironment(env);
+      result.environments++;
+      continue;
+    }
+    const known = new Set(existing.vars.map((v) => v.key));
+    const additions = env.vars.filter((v) => !known.has(v.key));
+    if (additions.length) {
+      await saveEnvironment({ ...existing, vars: [...existing.vars, ...additions] });
+    }
+    result.environmentsMerged++;
   }
 
   return result;

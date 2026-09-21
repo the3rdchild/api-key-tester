@@ -10,7 +10,7 @@
 
 import { nanoid } from 'nanoid';
 
-import { activeEnvVars, applyEnvVarChanges, loadCollections } from './collections.ts';
+import { activeEnvVars, applyEnvVarChanges, loadCollections, rootNodes } from './collections.ts';
 import { sendRequest } from './send.ts';
 import type {
   CollectionsFile,
@@ -67,25 +67,24 @@ export function collectRequests(file: CollectionsFile, opts: RunOptions): Reques
   if (opts.requestIds?.length) {
     return opts.requestIds.map((id) => file.requests[id]).filter((r): r is RequestSpec => !!r);
   }
-  if (opts.folderId) {
-    const folder = file.tree.find((n) => n.id === opts.folderId && n.type === 'folder');
-    return (folder?.children ?? [])
-      .map((id) => file.requests[id])
-      .filter((r): r is RequestSpec => !!r);
-  }
-  // Whole collection, in tree order: top-level requests and folder children.
+  // Depth-first, in tree order - a folder that contains folders runs its own
+  // requests first, then each subfolder.
   const out: RequestSpec[] = [];
-  for (const node of file.tree) {
-    if (node.type === 'request') {
-      const spec = file.requests[node.id];
-      if (spec) out.push(spec);
-      continue;
+  const walk = (nodeId: string) => {
+    const spec = file.requests[nodeId];
+    if (spec) {
+      out.push(spec);
+      return;
     }
-    for (const childId of node.children ?? []) {
-      const spec = file.requests[childId];
-      if (spec) out.push(spec);
-    }
+    const folder = file.tree.find((n) => n.id === nodeId && n.type === 'folder');
+    for (const child of folder?.children ?? []) walk(child);
+  };
+
+  if (opts.folderId) {
+    walk(opts.folderId);
+    return out;
   }
+  for (const node of rootNodes(file)) walk(node.id);
   return out;
 }
 

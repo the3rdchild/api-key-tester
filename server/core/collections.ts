@@ -140,11 +140,19 @@ export async function deleteFolder(id: string): Promise<void> {
   await mutate((file) => {
     const folder = findFolder(file, id);
     if (!folder) return;
-    for (const child of folder.children ?? []) {
-      delete file.requests[child];
-      file.tree = file.tree.filter((n) => n.id !== child);
-    }
-    file.tree = file.tree.filter((n) => n.id !== id);
+
+    // Folders can contain folders, so removal walks the whole subtree -
+    // otherwise nested requests stay in the file with nothing pointing at them.
+    const removeSubtree = (nodeId: string) => {
+      const node = file.tree.find((n) => n.id === nodeId);
+      if (node?.type === 'folder') {
+        for (const child of node.children ?? []) removeSubtree(child);
+      }
+      delete file.requests[nodeId];
+      file.tree = file.tree.filter((n) => n.id !== nodeId);
+    };
+
+    removeSubtree(id);
     detach(file, id);
   });
 }
@@ -210,6 +218,21 @@ export async function activeEnvVars(): Promise<Record<string, string>> {
 
 function findFolder(file: CollectionsFile, id: string): TreeNode | undefined {
   return file.tree.find((n) => n.id === id && n.type === 'folder');
+}
+
+/** Ids that some folder holds as a child - i.e. everything that is nested. */
+export function childIds(file: CollectionsFile): Set<string> {
+  const out = new Set<string>();
+  for (const node of file.tree) {
+    for (const child of node.children ?? []) out.add(child);
+  }
+  return out;
+}
+
+/** Top-level nodes, in file order: the ones nothing else claims. */
+export function rootNodes(file: CollectionsFile): TreeNode[] {
+  const nested = childIds(file);
+  return file.tree.filter((n) => !nested.has(n.id));
 }
 
 function parentOf(file: CollectionsFile, childId: string): string | undefined {
