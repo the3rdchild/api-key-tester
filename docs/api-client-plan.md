@@ -422,7 +422,9 @@ Fixture uji itu sudah dihapus lagi; data hasil impor milik pengguna tidak disent
 | Response utuh disimpan per entri (`.history-bodies/<id>.json`, cap 256 KB) | dulu yang tersimpan hanya potongan 4 KB untuk daftar, jadi klik entri lama tidak mengembalikan jawabannya |
 | Tab mengingat `historyId`, dipulihkan saat halaman dimuat ulang | reload dulu menghapus response yang sedang dilihat |
 | Dikelompokkan per hari: **Today / Yesterday / tanggal**, tiap baris membawa jam + latensi + status | "kapan request ini pernah dikirim" sebelumnya tidak terjawab sama sekali |
-| **Pin** per entri — tidak ikut tergusur saat log dipangkas | entri menarik hilang begitu 200 request terlampaui |
+| **Pin** per entri — tidak ikut tergusur, dan punya grup **Pinned** sendiri di paling atas | entri menarik hilang begitu jendela retensi terlewati |
+| Retensi pindah dari "200 entri" ke **"14 hari"** (`KEYWAY_HISTORY_DAYS`, dengan batas aman 2000 entri) | setelah tampilannya per-hari, "dua minggu terakhir" bisa dibayangkan; "200 request terakhir" tidak |
+| **Garis indent** di pohon koleksi, satu garis per tingkat | folder bersarang sulit dibaca tanpa panduan visual, persis seperti di editor kode |
 | Hapus satu entri, salin URL — tombolnya melayang di atas baris saat hover | tombol yang memakan lebar mendorong jam dan status ke baris kedua |
 
 ## 11. Yang masih terbuka

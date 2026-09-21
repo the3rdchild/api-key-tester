@@ -25,7 +25,12 @@ export const REQ_HISTORY_PATH = resolve(ROOT_DIR, 'requests-history.jsonl');
  *  inside the JSONL would mean rewriting megabytes every time it is trimmed. */
 export const RESPONSE_DIR = resolve(ROOT_DIR, '.history-bodies');
 
-export const MAX_ENTRIES = 200;
+/** How long a request stays in the log. Days read better than a count now that
+ *  the UI groups by day: "the last two weeks" is a thing you can picture, "the
+ *  last 200 requests" is not. */
+export const RETENTION_DAYS = Number(process.env.KEYWAY_HISTORY_DAYS ?? 14);
+/** Backstop for a very busy day, so the file cannot grow without bound. */
+export const MAX_ENTRIES = 2000;
 const PREVIEW_BYTES = 4096;
 /** Per-response cap. 200 entries × this is the worst case on disk. */
 const STORED_BODY_BYTES = 256 * 1024;
@@ -183,13 +188,12 @@ function countChecks(result: SendResult): { passed: number; total: number } | un
   return { passed: all.filter((c) => c.passed).length, total: all.length };
 }
 
-/** Keep the newest MAX_ENTRIES lines *plus* every pinned one, and drop the
- *  stored bodies of whatever gets evicted. Pinning is how an interesting
- *  response survives a busy afternoon. */
+/** Drop entries older than RETENTION_DAYS, and anything past MAX_ENTRIES if a
+ *  single stretch was busy enough to reach it. Pinned entries survive both:
+ *  pinning is how an interesting response outlives its fortnight. */
 async function trim(): Promise<void> {
   if (!existsSync(REQ_HISTORY_PATH)) return;
   const lines = (await readFile(REQ_HISTORY_PATH, 'utf8')).split('\n').filter(Boolean);
-  if (lines.length <= MAX_ENTRIES) return;
 
   const parsed = lines.map((line) => {
     try {
@@ -199,9 +203,22 @@ async function trim(): Promise<void> {
     }
   });
 
-  const unpinned = parsed.filter((p) => !p.entry?.pinned);
-  const evictCount = Math.max(0, lines.length - MAX_ENTRIES);
-  const evicted = new Set(unpinned.slice(0, evictCount).map((p) => p.line));
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const evicted = new Set<string>();
+  for (const { line, entry } of parsed) {
+    if (!entry || entry.pinned) continue;
+    if (Date.parse(entry.ts) < cutoff) evicted.add(line);
+  }
+
+  // Oldest first, so the backstop drops the stalest unpinned entries.
+  const survivors = parsed.filter((p) => !evicted.has(p.line));
+  let overflow = survivors.length - MAX_ENTRIES;
+  for (const { line, entry } of survivors) {
+    if (overflow <= 0) break;
+    if (entry?.pinned) continue;
+    evicted.add(line);
+    overflow--;
+  }
   if (evicted.size === 0) return;
 
   const kept = parsed.filter((p) => !evicted.has(p.line));

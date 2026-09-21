@@ -19,6 +19,24 @@ type Panel = 'collections' | 'environment' | 'history';
 
 const EXPAND_KEY = 'client.folder.';
 
+/** One vertical rule per nesting level, so a deep tree stays readable.
+ *  `self-stretch` makes each rule span the full row height, which is what turns
+ *  a stack of rows into a continuous line. */
+function Guides({ depth }: { depth: number }) {
+  if (depth <= 0) return null;
+  return (
+    <>
+      {Array.from({ length: depth }).map((_, i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          className="ml-[5px] w-[7px] shrink-0 self-stretch border-l border-slate-200 dark:border-slate-800"
+        />
+      ))}
+    </>
+  );
+}
+
 /** Payload type for sidebar drags. Anything else dropped here is ignored. */
 const DND_TYPE = 'application/x-keyway-node';
 
@@ -134,7 +152,7 @@ export function Sidebar({ state, onToast }: Props) {
           {state.history.length === 0 ? (
             <p className="px-2 py-3 text-xs text-slate-400">No requests sent yet.</p>
           ) : (
-            groupByDay(state.history).map((group) => (
+            groupHistory(state.history).map((group) => (
               <HistoryGroup key={group.key} group={group} state={state} onToast={onToast} />
             ))
           )}
@@ -216,10 +234,9 @@ function FolderRow({
   return (
     <div>
       <div
-        className={`group flex items-center gap-1 rounded ${
+        className={`group flex items-stretch gap-1 rounded ${
           dragOver ? 'bg-indigo-50 ring-1 ring-indigo-400 dark:bg-indigo-950' : ''
         }`}
-        style={{ paddingLeft: depth * 12 }}
         onDragOver={(e) => {
           if (!acceptsDrop(e)) return;
           e.preventDefault();
@@ -239,6 +256,7 @@ function FolderRow({
           setExpanded(true);
         }}
       >
+        <Guides depth={depth} />
         {renaming ? (
           <RenameInput
             initial={folder.name ?? ''}
@@ -318,7 +336,8 @@ function RequestRow({
   if (!spec) return null;
 
   return (
-    <div className="group flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
+    <div className="group flex items-stretch gap-1">
+      <Guides depth={depth} />
       {renaming ? (
         <RenameInput
           initial={spec.name}
@@ -490,8 +509,18 @@ interface DayGroup {
   entries: ReqHistoryEntry[];
 }
 
-/** Newest first, split into days. "Today"/"Yesterday" read faster than a date
- *  when that is what you actually mean. */
+/** Pinned entries first as their own group, then the rest newest-first split
+ *  into days. "Today"/"Yesterday" read faster than a date when that is what you
+ *  actually mean. */
+function groupHistory(entries: ReqHistoryEntry[]): DayGroup[] {
+  const pinned = entries.filter((e) => e.pinned);
+  const rest = entries.filter((e) => !e.pinned);
+  return [
+    ...(pinned.length ? [{ key: 'pinned', label: 'Pinned', entries: pinned }] : []),
+    ...groupByDay(rest),
+  ];
+}
+
 function groupByDay(entries: ReqHistoryEntry[]): DayGroup[] {
   const today = new Date();
   const yesterday = new Date(today);
@@ -536,9 +565,10 @@ function HistoryGroup({
         className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
       >
         <i className={`fa-solid ${open ? 'fa-chevron-down' : 'fa-chevron-right'} w-3 text-slate-400`} />
+        {group.key === 'pinned' && <i className="fa-solid fa-thumbtack text-[9px] text-amber-500" />}
         {group.label}
         <span className="ml-auto flex items-center gap-2 text-slate-400">
-          {pinned > 0 && (
+          {group.key !== 'pinned' && pinned > 0 && (
             <span className="text-amber-500" title={`${pinned} pinned`}>
               <i className="fa-solid fa-thumbtack text-[9px]" /> {pinned}
             </span>
