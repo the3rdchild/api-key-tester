@@ -10,7 +10,8 @@
 // choices[].delta.content, Anthropic-style content_block_delta, Gemini-style
 // candidates[].content.parts[].text, and a plain-text fallback.
 
-import type { StreamStats } from '../../shared/collections.ts';
+import { mergeCompletionMeta } from './llm-meta.ts';
+import type { CompletionMeta, StreamStats } from '../../shared/collections.ts';
 
 export interface StreamOptions {
   /** called for every piece of generated text, as it arrives */
@@ -34,6 +35,8 @@ export interface StreamOutcome {
   /** the generated text, deltas stitched back together */
   text: string;
   stats: StreamStats;
+  /** token counts, cost and finish reason, when the stream reports them */
+  completion?: CompletionMeta;
 }
 
 const DEFAULT_MAX = 1024 * 1024;
@@ -42,6 +45,15 @@ const DEFAULT_MAX = 1024 * 1024;
 export function isStreaming(res: Response): boolean {
   const type = res.headers.get('content-type') ?? '';
   return type.includes('text/event-stream') || type.includes('application/x-ndjson');
+}
+
+/** OpenAI-compatible streams put usage in the final chunk; Anthropic puts
+ *  output_tokens on message_delta. Either beats counting SSE events. */
+function extractTokens(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const obj = payload as Record<string, any>;
+  const n = obj.usage?.completion_tokens ?? obj.usage?.output_tokens;
+  return typeof n === 'number' && n > 0 ? n : undefined;
 }
 
 function extractDelta(payload: unknown): string {
@@ -86,6 +98,8 @@ export async function readStream(res: Response, opts: StreamOptions = {}): Promi
   let pending = '';
   let chunks = 0;
   let deltas = 0;
+  let reportedTokens: number | undefined;
+  let completion: CompletionMeta | undefined;
   let finished = false;
   const startedAt = opts.startedAt ?? Date.now();
   let firstTokenAt: number | undefined;
@@ -104,6 +118,8 @@ export async function readStream(res: Response, opts: StreamOptions = {}): Promi
     } catch {
       /* not JSON - treat as plain text */
     }
+    reportedTokens = extractTokens(parsed) ?? reportedTokens;
+    completion = mergeCompletionMeta(completion, parsed);
     const delta = extractDelta(parsed);
     if (!delta) return;
     deltas++;
@@ -160,18 +176,28 @@ export async function readStream(res: Response, opts: StreamOptions = {}): Promi
     }
   }
 
+  // Generation rate is measured from the first delta - the wait before it is
+  // latency, not throughput, and mixing them flatters slow providers. Counted
+  // in real tokens when the stream says how many, because providers pack
+  // several tokens into one SSE event (6 events for 32 tokens is normal), and
+  // reporting events as "tok/s" understates the rate several-fold.
+  const seconds =
+    firstTokenAt && lastTokenAt && lastTokenAt > firstTokenAt
+      ? (lastTokenAt - firstTokenAt) / 1000
+      : undefined;
+  const basis = reportedTokens ? 'tokens' : 'events';
+  const counted = reportedTokens ?? deltas;
+
   const stats: StreamStats = {
     chunks,
     deltas,
+    tokens: reportedTokens,
+    rateBasis: seconds && counted > 1 ? basis : undefined,
     finished,
     ttftMs: firstTokenAt ? firstTokenAt - startedAt : undefined,
-    // Generation rate, measured from the first delta - the wait before it is
-    // latency, not throughput, and mixing them flatters slow providers.
     tokensPerSecond:
-      firstTokenAt && lastTokenAt && lastTokenAt > firstTokenAt && deltas > 1
-        ? Number(((deltas - 1) / ((lastTokenAt - firstTokenAt) / 1000)).toFixed(1))
-        : undefined,
+      seconds && counted > 1 ? Number(((counted - 1) / seconds).toFixed(1)) : undefined,
   };
 
-  return { body: raw, truncated, size, text, stats };
+  return { body: raw, truncated, size, text, stats, completion };
 }

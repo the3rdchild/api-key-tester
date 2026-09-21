@@ -193,14 +193,33 @@ export interface CollectionsFile {
 export interface StreamStats {
   /** transport chunks read off the socket */
   chunks: number;
-  /** content deltas seen - a rough token count */
+  /** SSE events that carried text - NOT a token count: providers batch
+   *  several tokens into one event */
   deltas: number;
+  /** real completion tokens, when the stream reports usage */
+  tokens?: number;
+  /** whether the rate below counts tokens or merely SSE events */
+  rateBasis?: 'tokens' | 'events';
   /** the stream ended cleanly (saw [DONE] or the body closed) */
   finished: boolean;
   /** time to first content token */
   ttftMs?: number;
   /** deltas per second, measured from the first delta onward */
   tokensPerSecond?: number;
+}
+
+/** What an LLM response says about itself. Read from the body (or the final
+ *  SSE frame) so the pane can explain a half-finished answer instead of
+ *  leaving you to wonder whether the connection dropped. */
+export interface CompletionMeta {
+  model?: string;
+  /** "stop" = the model finished; "length" = it hit max_tokens; … */
+  finishReason?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  /** provider-reported cost, when there is one (OpenRouter sends this) */
+  cost?: number;
 }
 
 export interface RedirectHop {
@@ -234,6 +253,8 @@ export interface SendResult {
   logs?: string[];
   /** a script threw or timed out (distinct from a failing test) */
   scriptError?: string;
+  /** parsed from an LLM response: token counts, cost, and why it stopped */
+  completion?: CompletionMeta;
   /** 'base64' when the body is binary; the UI previews it instead of printing it */
   bodyEncoding?: 'utf8' | 'base64';
   /** content type without parameters, e.g. "image/png" */

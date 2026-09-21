@@ -12,10 +12,12 @@ import { remember, responseLookup } from './responses.ts';
 import { resolveVaultAuth, type VaultAuth } from './vault-auth.ts';
 import { ensureToken } from './oauth2.ts';
 import { isStreaming, readStream } from './stream.ts';
+import { completionMetaFromBody } from './llm-meta.ts';
 import { runScript, type ScriptOutcome } from './script.ts';
 import { runAssertions } from './assert.ts';
 import { allRuntimeVars, runtimeLookup, setRuntimeVars } from './runtime-vars.ts';
 import type {
+  CompletionMeta,
   RedirectHop,
   RequestSpec,
   SendResult,
@@ -340,6 +342,7 @@ export async function sendRequest(
         let stream: StreamStats | undefined;
         let streamText: string | undefined;
         let encoding: 'utf8' | 'base64' = 'utf8';
+        let completion: CompletionMeta | undefined;
 
         if (isStreaming(res)) {
           // Read it as it arrives: the interesting numbers (TTFT, tokens/s)
@@ -354,6 +357,7 @@ export async function sendRequest(
           truncated = streamed.truncated;
           stream = streamed.stats;
           streamText = streamed.text;
+          completion = streamed.completion;
         } else {
           const buf = await res.arrayBuffer();
           size = buf.byteLength;
@@ -364,6 +368,7 @@ export async function sendRequest(
             encoding = 'base64';
           } else {
             text = new TextDecoder().decode(kept);
+            completion = completionMetaFromBody(text);
           }
         }
 
@@ -381,6 +386,7 @@ export async function sendRequest(
           setCookies,
           stream,
           streamText,
+          completion,
           bodyEncoding: encoding,
           mediaType: (res.headers.get('content-type') ?? '').split(';')[0]?.trim() || undefined,
         };

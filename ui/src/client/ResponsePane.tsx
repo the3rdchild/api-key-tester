@@ -134,6 +134,43 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
             )}
             <Metric icon="fa-clock" value={`${result.latencyMs} ms`} title={`TTFB ${result.ttfbMs} ms`} />
             <Metric icon="fa-database" value={formatBytes(result.size)} />
+            {result.completion?.completionTokens !== undefined && (
+              <Metric
+                icon="fa-coins"
+                value={`${result.completion.completionTokens} tok`}
+                title={[
+                  result.completion.model,
+                  result.completion.promptTokens !== undefined
+                    ? `prompt ${result.completion.promptTokens}`
+                    : null,
+                  `completion ${result.completion.completionTokens}`,
+                  result.completion.totalTokens !== undefined
+                    ? `total ${result.completion.totalTokens}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            )}
+            {result.completion?.cost !== undefined && result.completion.cost > 0 && (
+              <Metric
+                icon="fa-money-bill-1"
+                value={`$${result.completion.cost.toPrecision(2)}`}
+                title="Cost reported by the provider for this request"
+              />
+            )}
+            {result.completion?.finishReason === 'length' && (
+              <span
+                className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                title={`The model stopped because it reached max_tokens${
+                  result.completion.completionTokens
+                    ? ` (${result.completion.completionTokens} tokens)`
+                    : ''
+                } — raise or remove max_tokens in the body to get the rest of the answer.`}
+              >
+                <i className="fa-solid fa-scissors" /> cut off · max_tokens
+              </span>
+            )}
             {result.stream && (
               <>
                 {result.stream.ttftMs !== undefined && (
@@ -146,8 +183,14 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
                 {result.stream.tokensPerSecond !== undefined && (
                   <Metric
                     icon="fa-gauge-high"
-                    value={`${result.stream.tokensPerSecond} tok/s`}
-                    title={`${result.stream.deltas} deltas over ${result.stream.chunks} chunks`}
+                    value={`${result.stream.tokensPerSecond} ${
+                      result.stream.rateBasis === 'tokens' ? 'tok/s' : 'ev/s'
+                    }`}
+                    title={
+                      result.stream.rateBasis === 'tokens'
+                        ? `${result.stream.tokens} completion tokens reported by the provider, over ${result.stream.deltas} SSE events`
+                        : `${result.stream.deltas} SSE events (the provider did not report a token count, and one event can carry several tokens)`
+                    }
                   />
                 )}
                 {!result.stream.finished && (
