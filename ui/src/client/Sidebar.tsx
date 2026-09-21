@@ -13,6 +13,9 @@ type Panel = 'collections' | 'environment' | 'history';
 
 const EXPAND_KEY = 'client.folder.';
 
+/** Payload type for sidebar drags. Anything else dropped here is ignored. */
+const DND_TYPE = 'application/x-keyway-node';
+
 interface Props {
   state: ClientState;
   onToast: (msg: string) => void;
@@ -64,10 +67,27 @@ export function Sidebar({ state, onToast }: Props) {
         }
       />
       {open.collections && (
-        <div className="max-h-[55%] min-h-0 overflow-auto px-1 pb-2">
+        <div
+          className="max-h-[55%] min-h-0 overflow-auto px-1 pb-2"
+          title="Drop here to move something out of its folder"
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes(DND_TYPE)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={async (e) => {
+            if (!e.dataTransfer.types.includes(DND_TYPE)) return;
+            e.preventDefault();
+            const id = e.dataTransfer.getData(DND_TYPE);
+            if (!id) return;
+            await clientApi.move(id, null);
+            await state.reloadCollections();
+          }}
+        >
           {!file || file.tree.length === 0 ? (
             <p className="px-2 py-3 text-xs text-slate-400">
-              Nothing saved yet. Hit <i className="fa-solid fa-floppy-disk" /> on a request to keep it.
+              Nothing saved yet. Hit <i className="fa-solid fa-floppy-disk" /> on a request to keep
+              it — you will be asked for a name and a folder.
             </p>
           ) : (
             rootNodes(file).map((node) => (
@@ -194,6 +214,7 @@ function FolderRow({
   // Collapsed by default and remembered per folder: an imported collection can
   // be 23 requests deep, and expanding all of it on every load buries the rest
   // of the sidebar.
+  const [dragOver, setDragOver] = useState(false);
   const [expanded, setExpanded] = useState(() => {
     return loadLocal(`${EXPAND_KEY}${folder.id}`) === '1';
   });
@@ -214,9 +235,34 @@ function FolderRow({
     setExpanded(true);
   };
 
+  const acceptsDrop = (e: React.DragEvent) => e.dataTransfer.types.includes(DND_TYPE);
+
   return (
     <div>
-      <div className="group flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
+      <div
+        className={`group flex items-center gap-1 rounded ${
+          dragOver ? 'bg-indigo-50 ring-1 ring-indigo-400 dark:bg-indigo-950' : ''
+        }`}
+        style={{ paddingLeft: depth * 12 }}
+        onDragOver={(e) => {
+          if (!acceptsDrop(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={async (e) => {
+          if (!acceptsDrop(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setDragOver(false);
+          const id = e.dataTransfer.getData(DND_TYPE);
+          if (!id || id === folder.id) return;
+          await clientApi.move(id, folder.id);
+          await state.reloadCollections();
+          setExpanded(true);
+        }}
+      >
         {renaming ? (
           <RenameInput
             initial={folder.name ?? ''}
@@ -231,6 +277,11 @@ function FolderRow({
           <>
             <button
               type="button"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DND_TYPE, folder.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
               onClick={toggleExpanded}
               onDoubleClick={() => setRenaming(true)}
               aria-expanded={expanded}
@@ -306,6 +357,11 @@ function RequestRow({
         <>
           <button
             type="button"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(DND_TYPE, id);
+              e.dataTransfer.effectAllowed = 'move';
+            }}
             onClick={() => state.openRequest(spec)}
             onDoubleClick={() => setRenaming(true)}
             className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"

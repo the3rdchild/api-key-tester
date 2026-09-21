@@ -7,19 +7,17 @@ import { EditModal } from './EditModal.tsx';
 import { ImportDialog } from './ImportDialog.tsx';
 import { ExportMenu } from './ExportMenu.tsx';
 import { DetailsModal } from './DetailsModal.tsx';
-import { RawTesterModal } from './RawTesterModal.tsx';
-import { ManualTesterModal } from './ManualTesterModal.tsx';
 
-/** The original key-vault screen, now one tab of the app shell. */
-export function VaultView() {
-  const { keys, loading, error, refresh, wsConnected, lastFileChange } = useStore();
+/** The original key-vault screen, now one tab of the app shell.
+ *  Its old built-in request testers are gone: the API client does that job
+ *  better, so the row action hands the key over to it instead. */
+export function VaultView({ onTryInClient }: { onTryInClient: (entry: KeyEntry) => void }) {
+  const { keys, loading, error, refresh, wsConnected } = useStore();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [editing, setEditing] = useState<KeyEntry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [detailsEntry, setDetailsEntry] = useState<KeyEntry | null>(null);
-  const [testerEntry, setTesterEntry] = useState<KeyEntry | null>(null);
-  const [manualOpen, setManualOpen] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
   const [filterProvider, setFilterProvider] = useState<string>('');
@@ -178,11 +176,6 @@ export function VaultView() {
             <span className={`inline-block h-2 w-2 rounded-full ${wsConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             {wsConnected ? 'live' : 'offline'}
           </span>
-          {lastFileChange && (
-            <span className="text-xs text-amber-600" title={`keys.md changed externally at ${lastFileChange}`}>
-              <i className="fa-solid fa-file-pen" /> file synced
-            </span>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -285,7 +278,7 @@ export function VaultView() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onShowDetails={setDetailsEntry}
-          onSendTest={setTesterEntry}
+          onTryInClient={onTryInClient}
         />
       </div>
 
@@ -307,20 +300,6 @@ export function VaultView() {
         entry={detailsEntry ? keys.find((k) => k.id === detailsEntry.id) ?? null : null}
         onClose={() => setDetailsEntry(null)}
       />
-      <RawTesterModal
-        entry={testerEntry ? keys.find((k) => k.id === testerEntry.id) ?? testerEntry : null}
-        onClose={() => setTesterEntry(null)}
-      />
-      <ManualTesterModal open={manualOpen} onClose={() => setManualOpen(false)} />
-
-      {/* Floating manual-tester button */}
-      <button
-        onClick={() => setManualOpen(true)}
-        title="Manual API tester"
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-lg text-white shadow-lg hover:bg-indigo-700"
-      >
-        <i className="fa-solid fa-paper-plane" />
-      </button>
 
       {/* Toast */}
       {toast && (

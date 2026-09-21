@@ -5,18 +5,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ImportCurlDialog } from './ImportCurlDialog.tsx';
+import { SaveRequestDialog } from './SaveRequestDialog.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { useClient } from './useClient.ts';
+import type { RequestSpec } from '../../../shared/collections.ts';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 
 const SPLIT_KEY = 'client.split';
 
-export function ClientView() {
+export function ClientView({
+  pendingRequest,
+  onPendingConsumed,
+}: {
+  pendingRequest?: Partial<RequestSpec> | null;
+  onPendingConsumed?: () => void;
+} = {}) {
   const state = useClient();
   const [toast, setToast] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   const [split, setSplit] = useState<number>(() => {
     const saved = Number(loadLocal(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
@@ -29,6 +38,17 @@ export function ClientView() {
   }, []);
 
   const { active } = state;
+
+  /** A request that already lives in the collection saves straight away; a new
+   *  one asks for a name and a folder first. */
+  const requestSave = useCallback(() => {
+    if (!active) return;
+    if (active.savedId) {
+      void state.saveTab(active.id).then(() => showToast('Saved'));
+      return;
+    }
+    setSaveOpen(true);
+  }, [active, state, showToast]);
 
   // ─── keyboard ─────────────────────────────────────────────────────────────
   // Alt-based shortcuts on purpose: Ctrl+T / Ctrl+W belong to the browser and
@@ -43,7 +63,7 @@ export function ClientView() {
       }
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        if (active) void state.saveTab(active.id).then(() => showToast('Saved'));
+        requestSave();
         return;
       }
       if (e.altKey && e.key.toLowerCase() === 't') {
@@ -73,7 +93,7 @@ export function ClientView() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, state, showToast]);
+  }, [active, state, showToast, requestSave]);
 
   // ─── draggable divider ────────────────────────────────────────────────────
   const startDrag = (e: React.MouseEvent) => {
@@ -186,8 +206,14 @@ export function ClientView() {
                     state.patchTab(active.id, { files: { ...active.files, [field]: files } })
                   }
                   onSend={() => void state.send(active.id)}
-                  onSave={() => void state.saveTab(active.id).then(() => showToast('Saved'))}
+                  onSave={requestSave}
                   onToast={showToast}
+                  onDefineVar={async (name) => {
+                    const value = window.prompt(`Value for {{${name}}}`, '');
+                    if (value === null) return;
+                    await state.defineVar(name, value);
+                    showToast(`{{${name}}} defined`);
+                  }}
                 />
               </div>
 
@@ -214,6 +240,19 @@ export function ClientView() {
           )}
         </div>
       </div>
+
+      <SaveRequestDialog
+        open={saveOpen}
+        initialName={active ? state.suggestName(active.id) : 'Request'}
+        folders={state.folderChoices()}
+        onCancel={() => setSaveOpen(false)}
+        onSave={async (name, parentId) => {
+          setSaveOpen(false);
+          if (!active) return;
+          await state.saveTab(active.id, { name, parentId });
+          showToast(`Saved as "${name}"`);
+        }}
+      />
 
       <ImportCurlDialog
         open={importOpen}

@@ -38,10 +38,6 @@ services:
       HOST: 127.0.0.1
       PORT: 8788
       TZ: ${TZ:-Asia/Jakarta}
-      # Tulis balik hasil edit UI ke keys.md (server/core/store.ts:245). Default
-      # mati supaya konten bebas di keys.md tidak ketimpa writer. Nyalakan dengan
-      # KEYTESTER_MIRROR_MD=1 di environment shell atau ubah default di sini.
-      KEYTESTER_MIRROR_MD: ${KEYTESTER_MIRROR_MD:-0}
 
     volumes:
       # Seluruh folder di-bind karena store.json, history.jsonl, keys.md, dan

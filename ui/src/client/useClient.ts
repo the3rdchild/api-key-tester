@@ -354,16 +354,72 @@ export function useClient() {
   );
 
   const saveTab = useCallback(
-    async (tabId: string, parentId?: string) => {
+    async (tabId: string, opts: { name?: string; parentId?: string | null } = {}) => {
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) return;
+      const spec = opts.name ? { ...tab.spec, name: opts.name } : tab.spec;
       const saved = tab.savedId
-        ? await clientApi.saveRequest({ ...tab.spec, id: tab.savedId })
-        : await clientApi.createRequest(tab.spec, parentId);
-      patchTab(tabId, { savedId: saved.id, dirty: false, spec: { ...tab.spec, id: saved.id } });
+        ? await clientApi.saveRequest({ ...spec, id: tab.savedId })
+        : await clientApi.createRequest(spec, opts.parentId ?? undefined);
+      patchTab(tabId, {
+        savedId: saved.id,
+        dirty: false,
+        spec: { ...spec, id: saved.id },
+      });
       await reloadCollections();
     },
     [tabs, patchTab, reloadCollections],
+  );
+
+  /** "https://api.test/v1/users?page=2" → "users" - a better default than
+   *  "Untitled request" when the save dialog opens. */
+  const suggestName = useCallback((tabId: string): string => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return 'Request';
+    if (tab.spec.name && tab.spec.name !== 'Untitled request') return tab.spec.name;
+    try {
+      const url = new URL(tab.spec.url.replace(/\{\{[^}]+\}\}/g, 'x'));
+      const last = url.pathname.split('/').filter(Boolean).pop();
+      return last ? `${tab.spec.method} ${last}` : url.hostname;
+    } catch {
+      return tab.spec.name || 'Request';
+    }
+  }, [tabs]);
+
+  /** Flat list of folders for pickers, deepest paths indented. */
+  const folderChoices = useCallback((): { id: string; name: string; depth: number }[] => {
+    const file = collections;
+    if (!file) return [];
+    const nested = new Set<string>();
+    for (const node of file.tree) for (const child of node.children ?? []) nested.add(child);
+    const out: { id: string; name: string; depth: number }[] = [];
+    const walk = (id: string, depth: number) => {
+      const node = file.tree.find((n) => n.id === id && n.type === 'folder');
+      if (!node) return;
+      out.push({ id: node.id, name: node.name ?? 'folder', depth });
+      for (const child of node.children ?? []) walk(child, depth + 1);
+    };
+    for (const node of file.tree) if (!nested.has(node.id)) walk(node.id, 0);
+    return out;
+  }, [collections]);
+
+  /** Define a variable in the active environment (creating one if needed). */
+  const defineVar = useCallback(
+    async (name: string, value: string) => {
+      const file = collections ?? (await clientApi.load());
+      let env = file.environments.find((e) => e.id === file.activeEnvId) ?? file.environments[0];
+      if (!env) {
+        env = await clientApi.createEnvironment('Default');
+        await clientApi.setActiveEnvironment(env.id);
+        env = { ...env, vars: [] };
+      }
+      const vars = env.vars.some((v) => v.key === name)
+        ? env.vars.map((v) => (v.key === name ? { ...v, value, enabled: true } : v))
+        : [...env.vars, { key: name, value, enabled: true }];
+      await clientApi.saveEnvironment({ ...env, vars });
+      await reloadCollections();
+    },
+    [collections, reloadCollections],
   );
 
   return {
@@ -388,6 +444,9 @@ export function useClient() {
     saveTab,
     reloadCollections,
     reloadHistory,
+    suggestName,
+    folderChoices,
+    defineVar,
   };
 }
 

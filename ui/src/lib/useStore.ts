@@ -7,7 +7,6 @@ export function useStore() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const [lastFileChange, setLastFileChange] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
 
@@ -49,9 +48,6 @@ export function useStore() {
           case 'store:changed':
             setKeys(evt.keys);
             break;
-          case 'file:changed':
-            setLastFileChange(new Date().toLocaleTimeString());
-            break;
           case 'test:started':
             setKeys((prev) =>
               prev.map((k) =>
@@ -77,5 +73,5 @@ export function useStore() {
     };
   }, [refresh]);
 
-  return { keys, loading, error, refresh, wsConnected, lastFileChange };
+  return { keys, loading, error, refresh, wsConnected };
 }

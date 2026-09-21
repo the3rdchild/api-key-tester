@@ -29,3 +29,6 @@ oauth-tokens.json
 
 # stored response bodies for the history log
 .history-bodies/
+
+# rolling copies of collections.json
+.collections-backups/

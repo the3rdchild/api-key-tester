@@ -24,12 +24,11 @@ import { matrixRouter } from './routes/matrix.ts';
 import { quotaRouter } from './routes/quota.ts';
 import { benchmarkRouter } from './routes/benchmark.ts';
 import { addSocket, broadcast, socketCount } from './routes/ws.ts';
-import { isMirrorEnabled, loadStore, setChangeEmitter, setMarkSelfWriteHook } from './core/store.ts';
+import { loadStore, setChangeEmitter } from './core/store.ts';
 import { loadCollections, setCollectionsChangeEmitter } from './core/collections.ts';
 import { setTokenChangeEmitter } from './core/oauth2.ts';
 import { setRunEmitter } from './core/collection-runner.ts';
 import { setMatrixEmitter } from './core/matrix.ts';
-import { markSelfWrite, setExternalChangeListener, startWatcher } from './core/watcher.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
 import type { WSEvent } from '../shared/types.ts';
 
@@ -116,16 +115,6 @@ setRunEmitter((event) => {
   else broadcast({ type: 'run:done', run: event.run });
 });
 
-setExternalChangeListener((path) => {
-  broadcast({ type: 'file:changed', path } satisfies WSEvent);
-  loadStore()
-    .then((keys) => broadcast({ type: 'store:changed', keys } satisfies WSEvent))
-    .catch(() => {});
-});
-
-// Mark our own writes so the watcher ignores them (loop prevention)
-setMarkSelfWriteHook(markSelfWrite);
-
 // ─── Static UI serving (production) ─────────────────────────────────────────
 app.get('*', async (c) => {
   // try to serve the file from ui/dist
@@ -165,7 +154,6 @@ const HOST = process.env.HOST ?? '127.0.0.1';
 
 await loadStore();
 await loadCollections();
-startWatcher();
 
 const server = Bun.serve<undefined>({
   port: PORT,
@@ -200,9 +188,6 @@ const server = Bun.serve<undefined>({
 console.log(`\n  Keyway → http://${HOST}:${PORT}`);
 console.log(`  UI (dev)   → http://localhost:5174`);
 console.log(`  WebSocket  → ws://${HOST}:${PORT}/live`);
-console.log(
-  `  keys.md    → ${isMirrorEnabled() ? 'mirrored (UI edits rewrite file)' : 'read-only (use Export to write)'}\n`,
-);
 
 process.on('SIGINT', () => {
   server.stop();

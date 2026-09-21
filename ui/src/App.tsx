@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 
 import { ClientView } from './client/ClientView.tsx';
 import { KiwiMark } from './client/KiwiMark.tsx';
+import { buildRequestTemplate } from './lib/requestTemplate.ts';
+import type { RequestSpec } from '../../shared/collections.ts';
+import type { KeyEntry } from '../../shared/types.ts';
 import { RunnerView } from './client/RunnerView.tsx';
 import { VaultView } from './components/VaultView.tsx';
 import { loadLocal, saveLocal } from './lib/storage.ts';
@@ -12,6 +15,8 @@ const SCREEN_KEY = 'screen';
 
 /** App shell: the API client is the product, the key vault is a tab of it. */
 export default function App() {
+  /** A request handed over from the vault, waiting for the client to open it. */
+  const [pending, setPending] = useState<Partial<RequestSpec> | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const saved = loadLocal(SCREEN_KEY);
     return saved === 'vault' || saved === 'runner' ? saved : 'client';
@@ -20,6 +25,23 @@ export default function App() {
   useEffect(() => {
     saveLocal(SCREEN_KEY, screen);
   }, [screen]);
+
+  /** Build a provider-shaped request for this key and open it in the client.
+   *  Auth points at the vault rather than pasting the secret into a header. */
+  const handOver = async (entry: KeyEntry) => {
+    const template = await buildRequestTemplate(entry);
+    setPending({
+      name: `${entry.provider}${entry.label ? ` · ${entry.label}` : ''}`,
+      method: template.method,
+      url: template.url,
+      headers: Object.entries(template.headers)
+        .filter(([k]) => k.toLowerCase() !== 'authorization' && !k.toLowerCase().includes('api-key'))
+        .map(([key, value]) => ({ key, value, enabled: true })),
+      auth: { type: 'vault', keyId: entry.id },
+      body: template.body ? { mode: 'json', text: template.body } : { mode: 'none' },
+    });
+    setScreen('client');
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -39,9 +61,11 @@ export default function App() {
       </nav>
 
       <main className="min-h-0 flex-1">
-        {screen === 'client' && <ClientView />}
+        {screen === 'client' && (
+          <ClientView pendingRequest={pending} onPendingConsumed={() => setPending(null)} />
+        )}
         {screen === 'runner' && <RunnerView />}
-        {screen === 'vault' && <VaultView />}
+        {screen === 'vault' && <VaultView onTryInClient={(entry) => void handOver(entry)} />}
       </main>
     </div>
   );

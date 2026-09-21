@@ -13,7 +13,7 @@ bun install           # first time only
 bun run dev           # → http://localhost:5174
 ```
 
-On first run, the parser reads `keys.md` and bootstraps `store.json` (~29 entries from the current file). Subsequent runs load from `store.json` directly.
+`store.json` is the vault. `keys.md` is a file format you can import from and export to — not a second copy that has to be kept in step.
 
 ### Production build (single port)
 
@@ -31,7 +31,7 @@ docker compose down
 ```
 
 - **Loopback only.** The port is published on `127.0.0.1` because `store.json` holds real keys and the panel has no auth. For remote access, tunnel port 8788 through the panel in `../port-forward`.
-- **Data stays on the host.** The whole project dir is bind-mounted, so `store.json`, `history.jsonl`, `keys.md` and `benchmark/` are the same files you edit locally. Bun runs the TypeScript as-is, so a server code change only needs `docker compose restart` - no rebuild.
+- **Data stays on the host.** The whole project dir is bind-mounted, so `store.json`, `collections.json`, `requests-history.jsonl` and `benchmark/` are the same files you edit locally. Bun runs the TypeScript as-is, so a server code change only needs `docker compose restart` - no rebuild.
 - **UI build runs at container start**, but only when `ui/dist` is missing or older than `ui/src` - so an edited UI is picked up by `docker compose restart` too.
 - **`node_modules` comes from a named volume** (installed inside the image, masking the host folder). After changing `package.json`:
 
@@ -40,7 +40,7 @@ docker compose down
   docker volume rm key-tester_node_modules   # only if you want a clean reinstall
   ```
 
-- **Env overrides**: `PORT` (8788), `HOST` (must stay `0.0.0.0` inside the container), `TZ`, `KEYTESTER_MIRROR_MD=1` to mirror UI edits back into `keys.md`.
+- **Env overrides**: `PORT` (8788), `HOST` (keep it on loopback), `TZ`.
 
 ## API client
 
@@ -87,7 +87,7 @@ The CLI reads `collections.json` directly — no server needed — and exits non
 ## What it does
 
 - **Tests keys** via cheap probes (GET `/models`, `HeadBucket`, etc.) - costs nothing on most providers
-- **Two-way file sync** - edit `keys.md` in your editor, the UI updates live; edit in the UI, the file is rewritten
+- **Markdown in and out** - paste or upload a `keys.md`-style file to import, and export the vault back to `.md` any time
 - **CRUD via UI** - add/edit/delete keys with dynamic fields per provider
 - **Import** - paste raw markdown / env / curl snippets, preview, then commit
 - **Export** - `.md`, `.json`, `.env`, `curl` snippets, or `.csv`
@@ -106,7 +106,6 @@ The CLI reads `collections.json` directly — no server needed — and exits non
 
 ```
 key-tester/
-├─ keys.md                # human-readable (editable, auto-synced)
 ├─ store.json             # canonical state (auto-generated, gitignored)
 ├─ history.jsonl          # test history (auto-generated, gitignored)
 ├─ shared/types.ts        # shared TypeScript types
@@ -120,13 +119,6 @@ key-tester/
 │  └─ src/components/     # KeyTable, EditModal, ImportDialog, ExportMenu
 └─ dev.mjs                # spawns api + vite concurrently
 ```
-
-## How two-way sync works
-
-- **`store.json`** is canonical for: `id`, `status`, `lastTestedAt`, history references
-- **`keys.md`** is canonical for: `credentials`, `label`, `baseURL`, `note` (so you can edit it directly)
-- The watcher debounces external file changes (300 ms) and merges them by matching `provider + apiKeyPrefix(8) + section` - status is preserved, credentials are updated
-- When the server itself writes `keys.md` (via UI edit), it tags the write to prevent feedback loops
 
 ## API reference
 

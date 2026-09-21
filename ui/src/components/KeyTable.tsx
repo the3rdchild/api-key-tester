@@ -9,12 +9,12 @@ interface Props {
   onEdit: (entry: KeyEntry) => void;
   onDelete: (id: string) => void;
   onShowDetails: (entry: KeyEntry) => void;
-  onSendTest: (entry: KeyEntry) => void;
+  onTryInClient: (entry: KeyEntry) => void;
 }
 
 type SortKey = 'provider' | 'label' | 'state' | 'latency' | 'testedAt';
 
-export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onSendTest }: Props) {
+export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onTryInClient }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('provider');
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -136,7 +136,7 @@ export function KeyTable({ keys, onTest, onEdit, onDelete, onShowDetails, onSend
                   )}
                   {k.testable && (
                     <button
-                      onClick={() => onSendTest(k)}
+                      onClick={() => onTryInClient(k)}
                       className="mr-2 text-indigo-600 hover:text-indigo-800"
                       title="Send a test request (editable)"
                     >

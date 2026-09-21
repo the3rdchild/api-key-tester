@@ -38,6 +38,8 @@ interface Props {
   onSend: () => void;
   onSave: () => void;
   onToast: (msg: string) => void;
+  /** define a missing {{var}} without leaving the request */
+  onDefineVar: (name: string) => void;
 }
 
 export function RequestPane({
@@ -50,6 +52,7 @@ export function RequestPane({
   onSend,
   onSave,
   onToast,
+  onDefineVar,
 }: Props) {
   const [section, setSection] = useState<Section>('params');
   const [matrixOpen, setMatrixOpen] = useState(false);
@@ -385,8 +388,19 @@ export function RequestPane({
       </div>
 
       {tab.missing && tab.missing.length > 0 && (
-        <p className="shrink-0 border-t border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Undefined variable{tab.missing.length > 1 ? 's' : ''}: {tab.missing.join(', ')}
+        <p className="flex shrink-0 flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <span>Undefined variable{tab.missing.length > 1 ? 's' : ''}:</span>
+          {tab.missing.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onDefineVar(name)}
+              title={`Define {{${name}}} in the active environment`}
+              className="rounded bg-amber-200/70 px-1.5 py-0.5 font-mono hover:bg-amber-300/70 dark:bg-amber-900/60 dark:hover:bg-amber-800/60"
+            >
+              {name} <i className="fa-solid fa-plus text-[9px]" />
+            </button>
+          ))}
         </p>
       )}
 

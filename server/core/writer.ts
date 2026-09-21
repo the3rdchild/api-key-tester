@@ -19,7 +19,7 @@ export function writeMarkdown(entries: KeyEntry[]): string {
   const lines: string[] = [
     '# Reacteev - API Keys & Secrets',
     '',
-    '> Managed by key-tester. Edit freely - changes sync back to the UI.',
+    '> Exported from Keyway. This file is an export format, not a live mirror -',
     `> Last regenerated: ${new Date().toISOString()}`,
     '',
     '---',

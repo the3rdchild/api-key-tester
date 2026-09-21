@@ -129,8 +129,8 @@ export type WSEvent =
   | { type: 'test:started'; keyId: string }
   | { type: 'test:done'; keyId: string; status: TestStatus }
   | { type: 'store:changed'; keys: KeyEntry[] }
-  | { type: 'file:changed'; path: string }
   | { type: 'collections:changed' }
+  | { type: 'benchmark:progress'; stage: string }
   | { type: 'oauth:token'; tokenId: string }
   | { type: 'run:started'; run: RunSummary }
   | { type: 'run:item'; runId: string; item: RunItemResult }

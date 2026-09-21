@@ -64,7 +64,7 @@ benchmarkRouter.post('/run', async (c) => {
     },
     {
       onProgress: (e) =>
-        broadcast({ type: 'file:changed', path: `benchmark:${e.type}` } satisfies WSEvent),
+        broadcast({ type: 'benchmark:progress', stage: e.type } satisfies WSEvent),
     },
   );
   return c.json(report);

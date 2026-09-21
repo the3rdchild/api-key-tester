@@ -5,7 +5,7 @@
 // vault-backed auth stores a keyId that points into store.json, so the file
 // stays safe to copy, diff or commit.
 
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { nanoid } from 'nanoid';
@@ -19,6 +19,11 @@ import type {
 } from '../../shared/collections.ts';
 
 export const COLLECTIONS_PATH = resolve(ROOT_DIR, 'collections.json');
+/** Rolling copies of the file before each write. One file holds every request,
+ *  every script and every assertion - an atomic write protects against a crash
+ *  mid-write, not against a bad edit or a bad import. */
+export const BACKUP_DIR = resolve(ROOT_DIR, '.collections-backups');
+const KEEP_BACKUPS = 10;
 
 let cache: CollectionsFile | null = null;
 let changeEmitter: (() => void) | null = null;
@@ -62,9 +67,27 @@ export async function loadCollections(): Promise<CollectionsFile> {
   return cache;
 }
 
+/** Keep the last KEEP_BACKUPS versions; oldest are pruned. */
+async function backup(): Promise<void> {
+  if (!existsSync(COLLECTIONS_PATH)) return;
+  try {
+    await mkdir(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await copyFile(COLLECTIONS_PATH, resolve(BACKUP_DIR, `collections-${stamp}.json`));
+    const files = (await readdir(BACKUP_DIR)).filter((f) => f.endsWith('.json')).sort();
+    for (const stale of files.slice(0, Math.max(0, files.length - KEEP_BACKUPS))) {
+      await unlink(resolve(BACKUP_DIR, stale)).catch(() => {});
+    }
+  } catch (e) {
+    // A failed backup must never block the write it was protecting.
+    console.warn('[collections] backup failed:', e);
+  }
+}
+
 /** Write via temp file + rename so a crash mid-write can't leave a half file. */
 async function persist(): Promise<void> {
   if (!cache) return;
+  await backup();
   const tmp = `${COLLECTIONS_PATH}.tmp`;
   await writeFile(tmp, JSON.stringify(cache, null, 2), 'utf8');
   await rename(tmp, COLLECTIONS_PATH);
@@ -159,6 +182,9 @@ export async function deleteFolder(id: string): Promise<void> {
 
 export async function moveNode(id: string, parentId: string | null, index?: number): Promise<void> {
   await mutate((file) => {
+    // A folder cannot land inside itself or one of its own descendants - that
+    // would cut the branch loose from the tree entirely.
+    if (parentId && (parentId === id || isDescendant(file, parentId, id))) return;
     detach(file, id);
     const type = file.requests[id] ? 'request' : 'folder';
     attach(file, id, type, parentId ?? undefined, index);
@@ -259,6 +285,16 @@ function attach(
     const node: TreeNode = { id, type };
     file.tree.splice(index ?? file.tree.length, 0, node);
   }
+}
+
+/** Is `candidate` somewhere inside the subtree rooted at `ancestor`? */
+function isDescendant(file: CollectionsFile, candidate: string, ancestor: string): boolean {
+  const folder = file.tree.find((n) => n.id === ancestor && n.type === 'folder');
+  for (const child of folder?.children ?? []) {
+    if (child === candidate) return true;
+    if (isDescendant(file, candidate, child)) return true;
+  }
+  return false;
 }
 
 function detach(file: CollectionsFile, id: string): void {

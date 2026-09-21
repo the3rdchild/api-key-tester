@@ -423,12 +423,12 @@ upload file **cukup lewat file picker browser** (tidak perlu mount path host), d
 
 Sisa yang benar-benar terbuka, per 2026-09-21:
 
-**A. Celah yang terasa di pemakaian harian (kecil-kecil)**
+**A. Celah pemakaian harian** — ✅ semuanya selesai 2026-09-21
 
-1. **Menyimpan request baru tidak menanyakan nama** — `Ctrl+S` menyimpannya sebagai "Untitled request", lalu harus di-rename di sidebar.
-2. **Belum bisa memindahkan request/folder antar folder dari UI.** Endpoint `moveNode` sudah ada sejak M1 — persis kasus rename kemarin: API ada, tombolnya tidak.
-3. **Sisa alat lama di tab Vault**: `RawTesterModal` + `ManualTesterModal` + tombol melayang, sekarang tumpang tindih dengan API client.
-4. **Variabel tak terdefinisi** sudah diperingatkan di footer, tapi belum ada jalan pintas untuk mendefinisikannya di situ juga.
+1. ~~Menyimpan request baru tidak menanyakan nama~~ → dialog **Save request** (nama + folder tujuan), nama awal ditebak dari URL.
+2. ~~Belum bisa memindahkan request/folder~~ → **drag-and-drop** di sidebar; jatuhkan ke badan panel untuk memindahkan ke akar. Server menolak memindahkan folder ke dalam keturunannya sendiri.
+3. ~~Sisa alat lama di tab Vault~~ → `RawTesterModal` + `ManualTesterModal` dihapus; tombol barisnya kini **"Try in API client"** yang menyerahkan key ke tab client lengkap dengan auth vault dan body sesuai provider.
+4. ~~Variabel tak terdefinisi~~ → tiap nama di peringatan jadi tombol; sekali klik menuliskannya ke environment aktif (dibuatkan kalau belum ada).
 
 **B. Yang menaikkan kelas**
 
@@ -439,7 +439,7 @@ Sisa yang benar-benar terbuka, per 2026-09-21:
 
 **C. Kebersihan & keamanan**
 
-9. **Belum ada cadangan `collections.json`.** Tulisannya sudah atomik (tmp → rename), tapi satu file ini sumber tunggal untuk semua koleksi.
+9. ~~Belum ada cadangan `collections.json`~~ — ✅ 10 salinan bergulir di `.collections-backups/`, diambil sebelum tiap penulisan.
 10. ~~**Nama produk**~~ — ✅ 2026-09-21: produk dan repo jadi **Keyway**, dengan ikon irisan kiwi (`ui/public/favicon.svg`). Kunci localStorage lama (`key-tester.*`) masih dibaca sebagai cadangan lewat `ui/src/lib/storage.ts`, jadi tab yang sedang terbuka tidak hilang.
 11. **Panel masih tanpa autentikasi** — aman selama bind loopback; butuh token kalau suatu saat ditunnel keluar.
-12. **`keys.md` tidak ada di folder ini**, jadi parser/writer/watcher-nya menganggur meski diputuskan dipertahankan.
+12. ~~`keys.md` menganggur~~ — ✅ subsistemnya dipangkas: watcher dihapus, mirror dua arah dan bootstrap dari `keys.md` dicabut dari `store.ts`. Parser dan writer tetap hidup untuk **impor** (tempel/unggah) dan **ekspor** `.md`. `store.json` kini satu-satunya sumber kebenaran vault.

@@ -8,12 +8,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { HistoryEntry, KeyEntry } from '../../shared/types.ts';
 import { parseMarkdown, parsedToEntry, type ParsedEntry } from './parser.ts';
-import { writeMarkdown } from './writer.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = resolve(__dirname, '../..');
 export const STORE_PATH = resolve(ROOT_DIR, 'store.json');
-export const KEYS_MD_PATH = resolve(ROOT_DIR, 'keys.md');
 export const HISTORY_PATH = resolve(ROOT_DIR, 'history.jsonl');
 
 const HISTORY_MAX_PER_KEY = 50;
@@ -49,21 +47,16 @@ export async function loadStore(): Promise<KeyEntry[]> {
         return memKeys;
       }
     } catch (e) {
-      console.warn('[store] store.json corrupt, re-parsing keys.md:', e);
+      console.warn('[store] store.json unreadable, starting empty:', e);
     }
   }
 
-  // First-run bootstrap: parse keys.md
-  memKeys = await bootstrapFromKeysMD();
+  // store.json is the vault. keys.md is a file format you can import from and
+  // export to (see routes/import.ts and routes/export.ts) - it is no longer a
+  // second source of truth that has to be watched and merged.
+  memKeys = [];
   await persist();
   return memKeys;
-}
-
-async function bootstrapFromKeysMD(): Promise<KeyEntry[]> {
-  if (!existsSync(KEYS_MD_PATH)) return [];
-  const md = await readFile(KEYS_MD_PATH, 'utf8');
-  const parsed = parseMarkdown(md);
-  return parsed.map((p) => parsedToEntry(p, () => nanoid(12)));
 }
 
 // ─── Save ───────────────────────────────────────────────────────────────────
@@ -96,7 +89,6 @@ export async function createKey(
   };
   keys.push(entry);
   await persist();
-  await writeMDMirror();
   changed();
   return entry;
 }
@@ -118,7 +110,6 @@ export async function updateKey(
   };
   keys[idx] = next;
   await persist();
-  await writeMDMirror();
   changed();
   return next;
 }
@@ -129,7 +120,6 @@ export async function deleteKey(id: string): Promise<boolean> {
   if (idx === -1) return false;
   keys.splice(idx, 1);
   await persist();
-  await writeMDMirror();
   changed();
   return true;
 }
@@ -213,8 +203,7 @@ export async function appendParsed(
 
   await persist();
   if (created.length > 0 || mergedIndices.length > 0) {
-    await writeMDMirror();
-  }
+    }
   changed();
   return { created, skippedIndices, mergedIndices };
 }
@@ -247,94 +236,6 @@ export async function setQuota(id: string, quota: KeyEntry['quota']): Promise<vo
   // like status: store.json only, never mirrored into keys.md
   await persist();
   changed();
-}
-
-// ─── keys.md mirror ────────────────────────────────────────────────────────
-// Mirror is OFF by default to prevent the writer from destroying unparsed
-// content (account info, example code, free-form notes) in keys.md. Enable
-// via env var KEYTESTER_MIRROR_MD=1 if you want UI edits to rewrite the file.
-const MIRROR_TO_MD = process.env.KEYTESTER_MIRROR_MD === '1' ||
-  process.env.KEYTESTER_MIRROR_MD === 'true';
-
-export async function writeMDMirror(): Promise<void> {
-  if (!MIRROR_TO_MD) return;
-  const keys = await loadStore();
-  const md = writeMarkdown(keys);
-  await writeFile(KEYS_MD_PATH, md, 'utf8');
-  // notify the watcher this was our own write (avoid feedback loop)
-  markSelfWriteHook?.();
-}
-
-export function isMirrorEnabled(): boolean {
-  return MIRROR_TO_MD;
-}
-
-let markSelfWriteHook: (() => void) | null = null;
-export function setMarkSelfWriteHook(fn: () => void): void {
-  markSelfWriteHook = fn;
-}
-
-// ─── External file watcher merge ────────────────────────────────────────────
-// Called when keys.md changes on disk (not from our own write).
-export async function mergeFromMD(): Promise<{ changed: boolean; keys: KeyEntry[] }> {
-  if (!existsSync(KEYS_MD_PATH)) return { changed: false, keys: memKeys || [] };
-  const md = await readFile(KEYS_MD_PATH, 'utf8');
-  const parsed = parseMarkdown(md);
-  const keys = await loadStore();
-
-  // Build match index: by (provider + apiKeyPrefix8) when possible, else by label+section.
-  const matchKey = (p: ParsedEntry): string => {
-    const k = p.credentials.apiKey || p.credentials.apiSecret || p.credentials.accessKeyId || '';
-    const prefix = k.slice(0, 8);
-    return `${p.provider}::${prefix}::${p.section || ''}`;
-  };
-
-  const existingIndex = new Map<string, number>();
-  keys.forEach((k, i) => {
-    const kk = k.credentials.apiKey || k.credentials.apiSecret || k.credentials.accessKeyId || '';
-    existingIndex.set(`${k.provider}::${kk.slice(0, 8)}::${k.section || ''}`, i);
-  });
-
-  let didChange = false;
-  const usedExisting = new Set<number>();
-  const nextKeys: KeyEntry[] = [];
-
-  for (const p of parsed) {
-    const key = matchKey(p);
-    const idx = existingIndex.get(key);
-    if (idx !== undefined && !usedExisting.has(idx)) {
-      usedExisting.add(idx);
-      const before = keys[idx];
-      // update creds/label/note from md; preserve id + status + timestamps
-      const merged: KeyEntry = {
-        ...before,
-        credentials: p.credentials,
-        label: p.label ?? before.label,
-        note: p.note ?? before.note,
-        section: p.section ?? before.section,
-        testable: p.testable,
-        updatedAt: new Date().toISOString(),
-      };
-      if (JSON.stringify(merged.credentials) !== JSON.stringify(before.credentials)) {
-        didChange = true;
-      }
-      nextKeys.push(merged);
-    } else {
-      // brand new entry from md
-      nextKeys.push(parsedToEntry(p, () => nanoid(12)));
-      didChange = true;
-    }
-  }
-
-  // Entries deleted from md: drop them (md is source of truth for creds presence)
-  if (nextKeys.length !== keys.length) didChange = true;
-
-  if (didChange) {
-    memKeys = nextKeys;
-    await persist();
-    changed();
-  }
-  return { changed: didChange, keys: memKeys ?? [] };
 }
 
 // ─── History ────────────────────────────────────────────────────────────────
