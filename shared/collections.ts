@@ -311,6 +311,8 @@ export interface MatrixSummary {
 
 export interface ReqHistoryEntry {
   id: string;
+  /** the saved request this came from, when it had one */
+  requestId?: string;
   ts: string;
   name?: string;
   method: string;
@@ -325,6 +327,14 @@ export interface ReqHistoryEntry {
   responsePreview?: string;
   /** how the tests/assertions went, when the request had any */
   checks?: { passed: number; total: number };
+}
+
+/** A history entry with the response body kept alongside it. */
+export interface HistoryDetail {
+  entry: ReqHistoryEntry;
+  /** the request as it went out (secrets redacted) */
+  request: { method: string; url: string; headers: Record<string, string>; body?: string };
+  result: SendResult;
 }
 
 export const DEFAULT_SETTINGS: RequestSettings = {

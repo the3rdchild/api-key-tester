@@ -417,6 +417,29 @@ Fixture uji itu sudah dihapus lagi; data hasil impor milik pengguna tidak disent
 
 ## 11. Yang masih terbuka
 
-1. **Nama produk** — repo masih `key-tester`, padahal vault cuma satu tab.
-2. **Upload file**: cukup lewat file picker browser (byte dikirim ke server), atau perlu juga referensi path host (butuh mount seperti `../local-web-player`)?
-3. **Nasib `keys.md`**: dipertahankan dengan sinkronisasi dua arah (parser 35 KB + writer + watcher), atau dipensiunkan jadi import/export saja?
+Keputusan lama yang sudah diambil (dipindahkan ke sini supaya daftarnya jujur):
+upload file **cukup lewat file picker browser** (tidak perlu mount path host), dan
+`keys.md` **dipertahankan** dengan sinkronisasi dua arah.
+
+Sisa yang benar-benar terbuka, per 2026-09-21:
+
+**A. Celah yang terasa di pemakaian harian (kecil-kecil)**
+
+1. **Menyimpan request baru tidak menanyakan nama** — `Ctrl+S` menyimpannya sebagai "Untitled request", lalu harus di-rename di sidebar.
+2. **Belum bisa memindahkan request/folder antar folder dari UI.** Endpoint `moveNode` sudah ada sejak M1 — persis kasus rename kemarin: API ada, tombolnya tidak.
+3. **Sisa alat lama di tab Vault**: `RawTesterModal` + `ManualTesterModal` + tombol melayang, sekarang tumpang tindih dengan API client.
+4. **Variabel tak terdefinisi** sudah diperingatkan di footer, tapi belum ada jalan pintas untuk mendefinisikannya di situ juga.
+
+**B. Yang menaikkan kelas**
+
+5. **Export balik** ke Postman/OpenAPI — sekarang hanya satu arah (impor).
+6. **Command palette / pencarian** (`Ctrl+K`) — pernah ada di rencana UI M1, belum dibuat; koleksi sudah 28 request.
+7. **Preview response biner** (gambar/PDF masih di-decode sebagai teks).
+8. **Auth & variabel di level folder** — Postman punya, importer kita hanya memetakan yang di level request.
+
+**C. Kebersihan & keamanan**
+
+9. **Belum ada cadangan `collections.json`.** Tulisannya sudah atomik (tmp → rename), tapi satu file ini sumber tunggal untuk semua koleksi.
+10. **Nama produk** — repo masih `key-tester` padahal vault tinggal satu dari tiga tab.
+11. **Panel masih tanpa autentikasi** — aman selama bind loopback; butuh token kalau suatu saat ditunnel keluar.
+12. **`keys.md` tidak ada di folder ini**, jadi parser/writer/watcher-nya menganggur meski diputuskan dipertahankan.

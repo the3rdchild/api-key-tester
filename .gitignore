@@ -26,3 +26,6 @@ collections.json
 cookies.json
 requests-history.jsonl
 oauth-tokens.json
+
+# stored response bodies for the history log
+.history-bodies/

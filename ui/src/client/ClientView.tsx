@@ -204,6 +204,7 @@ export function ClientView() {
                   error={active.error}
                   sending={active.sending}
                   liveStream={active.streamText}
+                  historical={active.historical}
                 />
               </div>
             </>

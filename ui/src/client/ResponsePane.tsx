@@ -16,9 +16,11 @@ interface Props {
   sending: boolean;
   /** text arriving right now, before the response is complete */
   liveStream?: string;
+  /** set when this response was restored from history rather than just sent */
+  historical?: { id: string; ts: string };
 }
 
-export function ResponsePane({ result, error, sending, liveStream }: Props) {
+export function ResponsePane({ result, error, sending, liveStream, historical }: Props) {
   const [view, setView] = useState<View>('pretty');
   const streaming = !!result?.stream;
   const [wrap, setWrap] = useState(true);
@@ -100,6 +102,14 @@ export function ResponsePane({ result, error, sending, liveStream }: Props) {
         {!sending && result && !error && (
           <>
             <StatusChip status={result.status} text={result.statusText} />
+            {historical && (
+              <span
+                className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                title={`Stored response from ${new Date(historical.ts).toLocaleString()}`}
+              >
+                <i className="fa-solid fa-clock-rotate-left" /> from history
+              </span>
+            )}
             <Metric icon="fa-clock" value={`${result.latencyMs} ms`} title={`TTFB ${result.ttfbMs} ms`} />
             <Metric icon="fa-database" value={formatBytes(result.size)} />
             {result.stream && (

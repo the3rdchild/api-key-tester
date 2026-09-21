@@ -111,7 +111,7 @@ export function Sidebar({ state, onToast }: Props) {
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => state.openFromHistory(entry)}
+                onClick={() => void state.openFromHistory(entry)}
                 className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
               >
                 <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">

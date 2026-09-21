@@ -17,7 +17,7 @@ import {
   deleteEnvironment,
   setActiveEnvironment,
 } from '../core/collections.ts';
-import { listHistory, clearHistory } from '../core/req-history.ts';
+import { listHistory, clearHistory, getHistoryDetail } from '../core/req-history.ts';
 import { listCookies, clearCookies } from '../core/cookies.ts';
 import { importCurl } from '../core/import-curl.ts';
 import { applyImport, importAny, summarise } from '../core/import/index.ts';
@@ -109,6 +109,13 @@ collectionsRouter.post('/active-env', async (c) => {
 collectionsRouter.get('/history', async (c) => {
   const limit = Number(c.req.query('limit') ?? 200);
   return c.json(await listHistory(Number.isFinite(limit) ? limit : 200));
+});
+
+/** GET /api/collections/history/:id - the stored request + response. */
+collectionsRouter.get('/history/:id', async (c) => {
+  const detail = await getHistoryDetail(c.req.param('id'));
+  if (!detail) return c.json({ error: 'No stored response for that entry' }, 404);
+  return c.json(detail);
 });
 
 collectionsRouter.delete('/history', async (c) => {

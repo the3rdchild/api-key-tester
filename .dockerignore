@@ -23,3 +23,5 @@ dev.mjs
 
 # repo referensi (bruno, hoppscotch) - jangan masuk konteks build
 ref/
+
+.history-bodies

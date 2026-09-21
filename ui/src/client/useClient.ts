@@ -34,13 +34,23 @@ export interface Tab {
   needsAuth?: boolean;
   /** text accumulated from a streamed response while it is still arriving */
   streamText?: string;
+  /** the history entry this tab's response came from, if it is not a fresh send */
+  historical?: { id: string; ts: string };
+  /** last response for this tab, so a reload can bring it back */
+  historyId?: string;
   error?: string;
   /** multipart files live in memory only - they can't be serialised */
   files: Record<string, File[]>;
 }
 
 interface Persisted {
-  tabs: { id: string; spec: RequestSpec; savedId?: string; dirty: boolean }[];
+  tabs: {
+    id: string;
+    spec: RequestSpec;
+    savedId?: string;
+    dirty: boolean;
+    historyId?: string;
+  }[];
   activeId: string | null;
 }
 
@@ -100,7 +110,13 @@ export function useClient() {
   // persist tab state (files are dropped on purpose)
   useEffect(() => {
     const payload: Persisted = {
-      tabs: tabs.map(({ id, spec, savedId, dirty }) => ({ id, spec, savedId, dirty })),
+      tabs: tabs.map(({ id, spec, savedId, dirty, historyId }) => ({
+        id,
+        spec,
+        savedId,
+        dirty,
+        historyId,
+      })),
       activeId,
     };
     try {
@@ -116,6 +132,35 @@ export function useClient() {
 
   const reloadHistory = useCallback(async () => {
     setHistory(await clientApi.history(200));
+  }, []);
+
+  // Responses are not kept in localStorage (they can be megabytes) - they are
+  // fetched back from the history store instead, so a reload no longer wipes
+  // the answer you were looking at.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const tab of tabs) {
+        if (!tab.historyId || tab.result) continue;
+        try {
+          const detail = await clientApi.historyDetail(tab.historyId);
+          if (cancelled) return;
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tab.id
+                ? { ...t, result: detail.result, historical: { id: detail.entry.id, ts: detail.entry.ts } }
+                : t,
+            ),
+          );
+        } catch {
+          /* entry evicted - nothing to restore */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -237,25 +282,49 @@ export function useClient() {
     [tabs],
   );
 
-  /** Re-open a request from the history log (headers are redacted, so only the
-   *  shape comes back - enough to resend after filling the secret again). */
+  /** Open a history entry *with the response it produced*.
+   *
+   *  The request itself comes from the saved request when there is one - the
+   *  stored snapshot has its secrets redacted, so replaying that copy would
+   *  send "«redacted»" as the token. */
   const openFromHistory = useCallback(
-    (entry: ReqHistoryEntry) => {
-      newTab({
-        name: entry.name || entry.url,
-        method: entry.method,
-        url: entry.url,
-        headers: Object.entries(entry.request.headers).map(([key, value]) => ({
-          key,
-          value,
-          enabled: true,
-        })),
-        body: entry.request.bodyPreview
-          ? { mode: 'json', text: entry.request.bodyPreview }
-          : { mode: 'none' },
-      });
+    async (entry: ReqHistoryEntry) => {
+      const saved = entry.requestId ? collections?.requests[entry.requestId] : undefined;
+      const tab: Tab = {
+        ...freshTab(),
+        spec: saved
+          ? structuredClone(saved)
+          : {
+              ...emptyRequest(uid(), entry.name || entry.url),
+              method: entry.method,
+              url: entry.url,
+              headers: Object.entries(entry.request.headers).map(([key, value]) => ({
+                key,
+                value,
+                enabled: true,
+              })),
+              body: entry.request.bodyPreview
+                ? { mode: 'json', text: entry.request.bodyPreview }
+                : { mode: 'none' },
+            },
+        savedId: saved?.id,
+        historyId: entry.id,
+        historical: { id: entry.id, ts: entry.ts },
+      };
+      setTabs((prev) => [...prev, tab]);
+      setActiveId(tab.id);
+
+      try {
+        const detail = await clientApi.historyDetail(entry.id);
+        setTabs((prev) =>
+          prev.map((t) => (t.id === tab.id ? { ...t, result: detail.result } : t)),
+        );
+      } catch {
+        // Older entries were logged before responses were kept; the request
+        // shape is still useful, so leave the tab open without a response.
+      }
     },
-    [newTab],
+    [collections],
   );
 
   const send = useCallback(
@@ -272,6 +341,8 @@ export function useClient() {
           note: res.note,
           needsAuth: res.needsAuthorization,
           error: res.result.error,
+          historyId: res.historyId,
+          historical: undefined,
         });
         // this response can now be referenced with {{res.<name>.…}}
         clientApi.chainable().then(setChainable).catch(() => {});

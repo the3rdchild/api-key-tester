@@ -3,6 +3,7 @@
 import type {
   CollectionsFile,
   EnvironmentDef,
+  HistoryDetail,
   OAuth2Config,
   ReqHistoryEntry,
   RequestSpec,
@@ -115,6 +116,9 @@ export const clientApi = {
 
   history: (limit = 200) =>
     fetch(`${BASE}/history?limit=${limit}`).then((r) => json<ReqHistoryEntry[]>(r)),
+
+  historyDetail: (id: string) =>
+    fetch(`${BASE}/history/${id}`).then((r) => json<HistoryDetail>(r)),
 
   clearHistory: () =>
     fetch(`${BASE}/history`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
