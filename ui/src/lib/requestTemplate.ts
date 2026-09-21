@@ -9,6 +9,12 @@ export interface RequestTemplate {
   note?: string;
 }
 
+/** The body this builds is a starting point you edit, not a probe: 32 tokens
+ *  was right when this button meant "send a cheap test", and wrong now that it
+ *  means "open this key as a request" - it cut every answer mid-sentence.
+ *  Anthropic requires the field, so it stays, just large enough to be useful. */
+const DEFAULT_MAX_TOKENS = 512;
+
 const OPENAI_DEFAULTS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
   deepseek: 'https://api.deepseek.com',
@@ -57,7 +63,7 @@ export async function buildRequestTemplate(entry: KeyEntry): Promise<RequestTemp
       body: pretty({
         model,
         messages: [{ role: 'user', content: 'Hello! Reply with a short greeting.' }],
-        max_tokens: 32,
+        max_tokens: DEFAULT_MAX_TOKENS,
       }),
       note: base ? undefined : 'No base URL saved for this key - set the endpoint before sending.',
     };
@@ -76,7 +82,7 @@ export async function buildRequestTemplate(entry: KeyEntry): Promise<RequestTemp
       },
       body: pretty({
         model: (c.model || 'claude-3-5-haiku-latest').trim(),
-        max_tokens: 32,
+        max_tokens: DEFAULT_MAX_TOKENS,
         messages: [{ role: 'user', content: 'Hello! Reply with a short greeting.' }],
       }),
     };
@@ -109,7 +115,7 @@ export async function buildRequestTemplate(entry: KeyEntry): Promise<RequestTemp
       body: pretty({
         model: (c.model || 'sonar').trim(),
         messages: [{ role: 'user', content: 'Hello! Reply with a short greeting.' }],
-        max_tokens: 32,
+        max_tokens: DEFAULT_MAX_TOKENS,
       }),
     };
   }
@@ -165,7 +171,7 @@ export async function buildRequestTemplate(entry: KeyEntry): Promise<RequestTemp
       body: pretty({
         model: (c.model || 'glm-4.6').trim(),
         messages: [{ role: 'user', content: 'Hello! Reply with a short greeting.' }],
-        max_tokens: 32,
+        max_tokens: DEFAULT_MAX_TOKENS,
       }),
       note: note ?? 'Token is a short-lived JWT minted from your key (expires in 1h).',
     };

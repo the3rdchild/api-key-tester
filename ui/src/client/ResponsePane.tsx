@@ -171,6 +171,40 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
                 <i className="fa-solid fa-scissors" /> cut off · max_tokens
               </span>
             )}
+            {result.completion?.completionTokens !== undefined && (
+              <Metric
+                icon="fa-coins"
+                value={`${result.completion.completionTokens} tok`}
+                title={[
+                  result.completion.model,
+                  result.completion.promptTokens !== undefined
+                    ? `prompt ${result.completion.promptTokens}`
+                    : null,
+                  `completion ${result.completion.completionTokens}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            )}
+            {result.completion?.cost !== undefined && result.completion.cost > 0 && (
+              <Metric
+                icon="fa-money-bill-1"
+                value={`$${result.completion.cost.toPrecision(2)}`}
+                title="Cost reported by the provider for this request"
+              />
+            )}
+            {result.completion?.finishReason === 'length' && (
+              <span
+                className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                title={`The model stopped because it reached max_tokens${
+                  result.completion.completionTokens
+                    ? ` (${result.completion.completionTokens} tokens)`
+                    : ''
+                } — raise or remove max_tokens in the body to get the rest of the answer.`}
+              >
+                <i className="fa-solid fa-scissors" /> cut off · max_tokens
+              </span>
+            )}
             {result.stream && (
               <>
                 {result.stream.ttftMs !== undefined && (
