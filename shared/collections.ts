@@ -234,6 +234,10 @@ export interface SendResult {
   logs?: string[];
   /** a script threw or timed out (distinct from a failing test) */
   scriptError?: string;
+  /** 'base64' when the body is binary; the UI previews it instead of printing it */
+  bodyEncoding?: 'utf8' | 'base64';
+  /** content type without parameters, e.g. "image/png" */
+  mediaType?: string;
   /** present when the response was an event stream */
   stream?: StreamStats;
   /** the generated text with SSE framing stripped */

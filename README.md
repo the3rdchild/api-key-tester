@@ -63,6 +63,8 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Matrix run** — send the current request across several vault keys (and models) at once and compare status, latency, TTFT and answer side by side. The body writes `{{model}}`, the URL writes `{{vault.baseURL}}`, and each cell fills them in from its own key
 - **Quota column** — for providers that expose a balance cheaply (OpenRouter, DeepSeek, ElevenLabs), the vault shows what is left; the rest stay empty rather than guessed
 - **Runner** — run a folder in order (variables set by one request are there for the next), with live progress, per-assertion detail and a "rerun failed" button
+- **Export** — hand a folder or the whole collection to someone else as a **Postman v2.1** file, a **.http** file, or Keyway's own JSON. Declarative assertions are rewritten as Postman tests so the checks travel too, and anything that cannot cross (a vault key, a file field) is listed before the download
+- **Binary responses** — images, PDFs, audio and video are previewed inline instead of being decoded into line noise; everything else offers a download
 - **Import** — Postman collections and environments, Insomnia v4 exports, and OpenAPI/Swagger documents (JSON or YAML). Preview shows the folders, counts and anything that can't be carried over before a single request is written; OpenAPI bodies are generated from the schema so the first send is one edit away. Everything lands inside one folder named after the collection (editable before importing), so a second import never mixes with the first, and an environment that already exists gains the new variables instead of being duplicated
 - **Sidebar** — folders nest, and both folders and requests rename in place (pencil, or double-click). Folders start collapsed and remember what you opened
 - **Copy as curl** — exactly what was sent, auth included
@@ -70,6 +72,9 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 Dependencies are installed **inside the container** (`docker compose exec keyway bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec keyway bunx tsc --noEmit`.
 
 Everything is stored in `collections.json` at the project root. It holds **no secrets**: vault-backed auth references a key by id, and OAuth2 tokens live in `oauth-tokens.json` (gitignored) — the collection keeps only endpoints, client id and scope.
+
+- **Response views** — **Tree** (collapsible JSON; click a key to copy its path, e.g. `$.data.0.id`, straight into the Tests tab), Pretty, Raw, Headers, Cookies, plus Tests and Stream when they apply
+- **Command palette** — `Ctrl+K` (or `Alt+K`) searches saved requests, past responses and commands from one box
 
 Other shortcuts: `Ctrl+Enter` send, `Ctrl+S` save, `Alt+L` focus the URL bar, `Alt+I` import cURL.
 

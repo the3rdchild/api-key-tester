@@ -27,6 +27,7 @@ import {
 import { listCookies, clearCookies } from '../core/cookies.ts';
 import { importCurl } from '../core/import-curl.ts';
 import { applyImport, importAny, summarise } from '../core/import/index.ts';
+import { toHttpFile, toPostman } from '../core/export-collection.ts';
 import { listRemembered } from '../core/responses.ts';
 import { emptyRequest } from '../../shared/collections.ts';
 import type { EnvironmentDef, RequestSpec } from '../../shared/collections.ts';
@@ -179,6 +180,32 @@ collectionsRouter.post('/import', async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
+});
+
+/** GET /api/collections/export?format=postman|http|json&folderId=… */
+collectionsRouter.get('/export', async (c) => {
+  const format = (c.req.query('format') ?? 'postman').toLowerCase();
+  const folderId = c.req.query('folderId') || undefined;
+  const file = await loadCollections();
+
+  if (format === 'json') {
+    return new Response(JSON.stringify(file, null, 2), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Disposition': 'attachment; filename="keyway-collections.json"',
+      },
+    });
+  }
+
+  const result = format === 'http' ? toHttpFile(file, folderId) : toPostman(file, folderId);
+  return new Response(result.body, {
+    headers: {
+      'Content-Type': result.contentType,
+      'Content-Disposition': `attachment; filename="${result.filename}"`,
+      // The UI reads this to show what could not be carried over.
+      'X-Keyway-Warnings': encodeURIComponent(JSON.stringify(result.warnings)),
+    },
+  });
 });
 
 /** GET /api/collections/chainable - requests whose last response can be

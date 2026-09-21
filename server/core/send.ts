@@ -28,6 +28,19 @@ const BODY_CAP = 1024 * 1024;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+/** Types that are not text. Decoding these as UTF-8 produces line noise, and
+ *  the interesting thing about a PNG is what it looks like. */
+const BINARY_TYPES = /^(image|audio|video|font)\/|^application\/(pdf|octet-stream|zip|gzip|wasm)/;
+
+function isBinary(contentType: string | null): boolean {
+  if (!contentType) return false;
+  return BINARY_TYPES.test(contentType.split(';')[0]!.trim().toLowerCase());
+}
+
+function toBase64(buf: ArrayBuffer): string {
+  return Buffer.from(buf).toString('base64');
+}
+
 export interface SendOptions {
   /** multipart files, keyed by the field name the UI used */
   files?: Map<string, File[]>;
@@ -326,6 +339,7 @@ export async function sendRequest(
         let truncated: boolean;
         let stream: StreamStats | undefined;
         let streamText: string | undefined;
+        let encoding: 'utf8' | 'base64' = 'utf8';
 
         if (isStreaming(res)) {
           // Read it as it arrives: the interesting numbers (TTFT, tokens/s)
@@ -344,7 +358,13 @@ export async function sendRequest(
           const buf = await res.arrayBuffer();
           size = buf.byteLength;
           truncated = size > BODY_CAP;
-          text = new TextDecoder().decode(truncated ? buf.slice(0, BODY_CAP) : buf);
+          const kept = truncated ? buf.slice(0, BODY_CAP) : buf;
+          if (isBinary(res.headers.get('content-type'))) {
+            text = toBase64(kept);
+            encoding = 'base64';
+          } else {
+            text = new TextDecoder().decode(kept);
+          }
         }
 
         const result: SendResult = {
@@ -361,6 +381,8 @@ export async function sendRequest(
           setCookies,
           stream,
           streamText,
+          bodyEncoding: encoding,
+          mediaType: (res.headers.get('content-type') ?? '').split(';')[0]?.trim() || undefined,
         };
         // ─── post-response script + assertions ───────────────────────────
         if (spec.scripts?.post?.trim()) {

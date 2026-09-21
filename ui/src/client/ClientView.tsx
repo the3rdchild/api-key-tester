@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { CommandPalette, type PaletteCommand } from './CommandPalette.tsx';
 import { ImportCurlDialog } from './ImportCurlDialog.tsx';
 import { SaveRequestDialog } from './SaveRequestDialog.tsx';
 import { Sidebar } from './Sidebar.tsx';
@@ -26,6 +27,7 @@ export function ClientView({
   const [toast, setToast] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [split, setSplit] = useState<number>(() => {
     const saved = Number(loadLocal(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
@@ -89,6 +91,13 @@ export function ClientView({
       if (e.altKey && e.key.toLowerCase() === 'i') {
         e.preventDefault();
         setImportOpen(true);
+        return;
+      }
+      // Ctrl+K is Firefox's search bar, but a page may take it - and Alt+K is
+      // there for when it doesn't.
+      if ((mod && e.key.toLowerCase() === 'k') || (e.altKey && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -119,6 +128,47 @@ export function ClientView({
   useEffect(() => {
     saveLocal(SPLIT_KEY, String(split));
   }, [split]);
+
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'new', label: 'New request', hint: 'Alt+T', icon: 'fa-file-circle-plus', run: () => state.newTab() },
+    { id: 'save', label: 'Save request', hint: 'Ctrl+S', icon: 'fa-floppy-disk', run: requestSave },
+    {
+      id: 'send',
+      label: 'Send request',
+      hint: 'Ctrl+Enter',
+      icon: 'fa-paper-plane',
+      run: () => active && void state.send(active.id),
+    },
+    { id: 'curl', label: 'Import cURL', hint: 'Alt+I', icon: 'fa-terminal', run: () => setImportOpen(true) },
+    {
+      id: 'import',
+      label: 'Import collection (Postman · Insomnia · OpenAPI)',
+      icon: 'fa-file-import',
+      // The dialog lives in the sidebar; an event keeps the two from having to
+      // know about each other.
+      run: () => window.dispatchEvent(new CustomEvent('keyway:import-collection')),
+    },
+    {
+      id: 'export',
+      label: 'Export collection (Postman · .http · JSON)',
+      icon: 'fa-file-export',
+      run: () => window.dispatchEvent(new CustomEvent('keyway:export-collection')),
+    },
+    {
+      id: 'duplicate',
+      label: 'Duplicate this tab',
+      hint: 'Alt+D',
+      icon: 'fa-copy',
+      run: () => active && state.duplicateTab(active.id),
+    },
+    {
+      id: 'close',
+      label: 'Close this tab',
+      hint: 'Alt+W',
+      icon: 'fa-xmark',
+      run: () => active && state.closeTab(active.id),
+    },
+  ];
 
   return (
     <div className="flex h-full min-h-0">
@@ -179,7 +229,7 @@ export function ClientView({
           </button>
 
           <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
-            <span title="Alt+T new · Alt+W close · Alt+D duplicate · Alt+I import cURL · Ctrl+Enter send · Ctrl+S save · Alt+L focus URL">
+            <span title="Ctrl+K search · Alt+T new · Alt+W close · Alt+D duplicate · Alt+I import cURL · Ctrl+Enter send · Ctrl+S save · Alt+L focus URL">
               <i className="fa-solid fa-keyboard" /> shortcuts
             </span>
             <span
@@ -240,6 +290,16 @@ export function ClientView({
           )}
         </div>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        requests={Object.values(state.collections?.requests ?? {})}
+        history={state.history}
+        commands={paletteCommands}
+        onOpenRequest={(spec) => state.openRequest(spec)}
+        onOpenHistory={(entry) => void state.openFromHistory(entry)}
+      />
 
       <SaveRequestDialog
         open={saveOpen}

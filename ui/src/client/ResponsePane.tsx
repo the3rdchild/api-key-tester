@@ -6,9 +6,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import { JsonTree } from './JsonTree.tsx';
 import type { SendResult } from '../../../shared/collections.ts';
 
-type View = 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream';
+type View = 'preview' | 'tree' | 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream';
 
 interface Props {
   result?: SendResult;
@@ -23,16 +24,24 @@ interface Props {
 export function ResponsePane({ result, error, sending, liveStream, historical }: Props) {
   const [view, setView] = useState<View>('pretty');
   const streaming = !!result?.stream;
+  const binary = result?.bodyEncoding === 'base64';
+  const dataUrl = binary ? `data:${result?.mediaType ?? 'application/octet-stream'};base64,${result?.body}` : '';
   const [wrap, setWrap] = useState(true);
 
-  const pretty = useMemo(() => {
-    if (!result?.body) return '';
+  // Parsed once and shared: the tree needs the value, pretty needs the text.
+  const parsed = useMemo<{ ok: boolean; value: unknown }>(() => {
+    if (!result?.body || result.bodyEncoding === 'base64') return { ok: false, value: null };
     try {
-      return JSON.stringify(JSON.parse(result.body), null, 2);
+      return { ok: true, value: JSON.parse(result.body) };
     } catch {
-      return result.body;
+      return { ok: false, value: null };
     }
   }, [result?.body]);
+
+  const pretty = useMemo(
+    () => (parsed.ok ? JSON.stringify(parsed.value, null, 2) : (result?.body ?? '')),
+    [parsed, result?.body],
+  );
 
   const checks = [
     ...(result?.tests ?? []).map((t) => ({ label: t.name, passed: t.passed, detail: t.error })),
@@ -47,15 +56,21 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
 
   // A fresh response may carry no tests at all - don't leave the pane parked
   // on a tab that no longer exists.
+  // Only fall back once a response actually exists: while one is still being
+  // restored or sent there is nothing to judge, and flipping the view then
+  // means the tab you chose never survives a reload.
   useEffect(() => {
+    if (!result) return;
     if (view === 'tests' && !hasDiagnostics) setView('pretty');
-  }, [view, hasDiagnostics]);
+    if (view === 'tree' && !parsed.ok) setView('pretty');
+  }, [view, hasDiagnostics, parsed.ok, result]);
 
   // A stream's raw body is SSE framing; the stitched text is what you want to
   // read first.
   useEffect(() => {
     if (streaming) setView('stream');
-  }, [streaming, result?.latencyMs]);
+    else if (binary) setView('preview');
+  }, [streaming, binary, result?.latencyMs]);
 
   const copy = async (text: string) => {
     try {
@@ -67,11 +82,18 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
 
   const download = () => {
     if (!result) return;
-    const blob = new Blob([result.body], { type: result.headers['content-type'] ?? 'text/plain' });
+    const type = result.mediaType ?? result.headers['content-type'] ?? 'text/plain';
+    let blob: Blob;
+    if (result.bodyEncoding === 'base64') {
+      const bytes = Uint8Array.from(atob(result.body), (ch) => ch.charCodeAt(0));
+      blob = new Blob([bytes], { type });
+    } else {
+      blob = new Blob([result.body], { type });
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'response.txt';
+    a.download = result.bodyEncoding === 'base64' ? guessFilename(result.mediaType) : 'response.txt';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -193,7 +215,9 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
         >
           {([
             ...(streaming ? (['stream'] as View[]) : []),
-            'pretty',
+            ...(binary ? (['preview'] as View[]) : []),
+            ...(parsed.ok ? (['tree'] as View[]) : []),
+            ...(binary ? [] : (['pretty'] as View[])),
             'raw',
             'headers',
             'cookies',
@@ -234,11 +258,35 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
             <span className="animate-pulse">▌</span>
           </pre>
         ) : null}
+        {result && !error && view === 'preview' && binary && (
+          <BinaryPreview
+            mediaType={result.mediaType ?? ''}
+            dataUrl={dataUrl}
+            size={result.size}
+            truncated={result.truncated}
+          />
+        )}
+        {result && !error && view === 'tree' && parsed.ok && (
+          <JsonTree
+            value={parsed.value}
+            onCopyPath={(path) => {
+              navigator.clipboard.writeText(path).catch(() => {});
+            }}
+          />
+        )}
         {result && !error && view === 'stream' && (
           <Body text={result.streamText ?? ''} wrap={wrap} />
         )}
         {result && !error && view === 'pretty' && <Body text={pretty} wrap={wrap} />}
-        {result && !error && view === 'raw' && <Body text={result.body} wrap={wrap} />}
+        {result && !error && view === 'raw' &&
+          (binary ? (
+            <p className="p-3 text-xs text-slate-400">
+              {formatBytes(result.size)} of {result.mediaType || 'binary data'} — shown in the
+              Preview tab, or use the download button.
+            </p>
+          ) : (
+            <Body text={result.body} wrap={wrap} />
+          ))}
         {result && !error && view === 'headers' && <HeaderTable headers={result.headers} />}
         {result && !error && view === 'tests' && (
           <div className="p-3 text-xs">
@@ -376,6 +424,53 @@ function IconButton({
       <i className={`fa-solid ${icon}`} />
     </button>
   );
+}
+
+/** Images inline, PDFs in a frame, media with controls, anything else named
+ *  and offered as a download - a hex dump helps nobody. */
+function BinaryPreview({
+  mediaType,
+  dataUrl,
+  size,
+  truncated,
+}: {
+  mediaType: string;
+  dataUrl: string;
+  size: number;
+  truncated: boolean;
+}) {
+  const kind = mediaType.split('/')[0];
+  return (
+    <div className="grid gap-3 p-3">
+      <p className="text-xs text-slate-500">
+        {mediaType || 'binary'} · {formatBytes(size)}
+        {truncated && ' · truncated, download for the whole thing'}
+      </p>
+
+      {kind === 'image' && (
+        <img
+          src={dataUrl}
+          alt="Response preview"
+          className="max-h-[60vh] max-w-full rounded border border-slate-200 object-contain dark:border-slate-800"
+        />
+      )}
+      {mediaType === 'application/pdf' && (
+        <iframe src={dataUrl} title="Response PDF" className="h-[60vh] w-full rounded border border-slate-200 dark:border-slate-800" />
+      )}
+      {kind === 'audio' && <audio src={dataUrl} controls className="w-full" />}
+      {kind === 'video' && <video src={dataUrl} controls className="max-h-[60vh] w-full rounded" />}
+      {kind !== 'image' && kind !== 'audio' && kind !== 'video' && mediaType !== 'application/pdf' && (
+        <p className="text-xs text-slate-400">
+          No inline preview for this type — use the download button above.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function guessFilename(mediaType?: string): string {
+  const ext = (mediaType ?? '').split('/')[1]?.split('+')[0];
+  return ext ? `response.${ext}` : 'response.bin';
 }
 
 function formatBytes(n: number): string {

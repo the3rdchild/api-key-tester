@@ -444,9 +444,9 @@ Sisa yang benar-benar terbuka, per 2026-09-21:
 
 **B. Yang menaikkan kelas**
 
-5. **Export balik** ke Postman/OpenAPI — sekarang hanya satu arah (impor).
-6. **Command palette / pencarian** (`Ctrl+K`) — pernah ada di rencana UI M1, belum dibuat; koleksi sudah 28 request.
-7. **Preview response biner** (gambar/PDF masih di-decode sebagai teks).
+5. ~~Export balik~~ — ✅ 2026-09-21: **Postman v2.1**, **.http**, dan JSON milik sendiri, dengan lingkup seluruh koleksi atau satu folder. Assertion deklaratif diterjemahkan jadi `pm.test(...)`, script `bru.*` dipetakan balik ke `pm.*`, dan yang tidak bisa menyeberang (auth vault, field file, client secret OAuth2) dilaporkan sebelum berkas diunduh. Diuji bolak-balik: export folder PIMS → impor ulang → 4 folder, 22 request, struktur sama. Export OpenAPI sengaja tidak dibuat: koleksi tidak menyimpan schema, jadi hasilnya akan jadi spesifikasi palsu.
+6. ~~Command palette / pencarian~~ — ✅ 2026-09-21: `Ctrl+K` (atau `Alt+K`) mencari request tersimpan, response lama, dan perintah dalam satu kotak. Nama cocok lewat awalan → substring → subsequence (`gcv` menemukan "Get Current Value"); history baru ikut dicari dari dua karakter supaya tidak berisik.
+7. ~~Preview response biner~~ — ✅ respons biner disimpan sebagai base64 (bukan dipaksa lewat `TextDecoder`) lalu ditampilkan: gambar inline, PDF dalam frame, audio/video dengan kontrol, sisanya tombol unduh. Diuji dengan PNG httpbin (magic `\x89PNG`) dan favicon ICO Google. Tampilan **Tree** untuk JSON juga sudah ada — klik kunci menyalin path-nya (`$.data.0.id`), format yang persis dipakai tab Tests.
 8. **Auth & variabel di level folder** — Postman punya, importer kita hanya memetakan yang di level request.
 
 **C. Kebersihan & keamanan**

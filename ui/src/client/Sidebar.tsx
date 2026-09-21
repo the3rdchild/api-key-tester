@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { ExportDialog } from './ExportDialog.tsx';
 import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
@@ -55,6 +56,7 @@ function rootNodes(file: CollectionsFile): TreeNode[] {
 
 export function Sidebar({ state, onToast }: Props) {
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [open, setOpen] = useState<Record<Panel, boolean>>({
     collections: true,
     environment: false,
@@ -63,6 +65,18 @@ export function Sidebar({ state, onToast }: Props) {
   const file = state.collections;
 
   const toggle = (panel: Panel) => setOpen((prev) => ({ ...prev, [panel]: !prev[panel] }));
+
+  // The command palette can ask for the import dialog without importing it.
+  useEffect(() => {
+    const openImport = () => setImportOpen(true);
+    const openExport = () => setExportOpen(true);
+    window.addEventListener('keyway:import-collection', openImport);
+    window.addEventListener('keyway:export-collection', openExport);
+    return () => {
+      window.removeEventListener('keyway:import-collection', openImport);
+      window.removeEventListener('keyway:export-collection', openExport);
+    };
+  }, []);
 
   const addFolder = async () => {
     const name = window.prompt('Folder name');
@@ -86,6 +100,11 @@ export function Sidebar({ state, onToast }: Props) {
               icon="fa-file-import"
               label="Import Postman / Insomnia / OpenAPI"
               onClick={() => setImportOpen(true)}
+            />
+            <MiniButton
+              icon="fa-file-export"
+              label="Export to Postman / .http / JSON"
+              onClick={() => setExportOpen(true)}
             />
           </>
         }
@@ -158,6 +177,13 @@ export function Sidebar({ state, onToast }: Props) {
           )}
         </div>
       )}
+
+      <ExportDialog
+        open={exportOpen}
+        folders={state.folderChoices()}
+        onClose={() => setExportOpen(false)}
+        onToast={onToast}
+      />
 
       <ImportCollectionDialog
         open={importOpen}
