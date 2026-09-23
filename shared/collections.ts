@@ -282,6 +282,8 @@ export interface RunItemResult {
   checks: RunCheck[];
   passed: boolean;
   skipped?: boolean;
+  /** what went out and what came back (secrets redacted, body capped) */
+  detail?: Omit<HistoryDetail, 'entry'>;
 }
 
 export interface RunSummary {

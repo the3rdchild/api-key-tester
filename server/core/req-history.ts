@@ -148,28 +148,53 @@ async function storeDetail(
 ): Promise<void> {
   try {
     await mkdir(RESPONSE_DIR, { recursive: true });
-    const body = result.body ?? '';
-    const stored = body.length > STORED_BODY_BYTES ? body.slice(0, STORED_BODY_BYTES) : body;
     const detail: HistoryDetail = {
       entry,
-      request: {
-        method: spec.method,
-        url: scrub(sentUrl || spec.url, secrets),
-        headers: maskHeaders(sentHeaders, secrets),
-        body: sentBody ? scrub(sentBody, secrets) : undefined,
-      },
-      result: {
-        ...result,
-        body: scrub(stored, secrets),
-        truncated: result.truncated || stored.length < body.length,
-        streamText: result.streamText ? scrub(result.streamText, secrets) : undefined,
-      },
+      ...redactDetail(spec, sentHeaders, sentBody, result, secrets, sentUrl),
     };
     await writeFile(resolve(RESPONSE_DIR, `${entry.id}.json`), JSON.stringify(detail), 'utf8');
   } catch (e) {
     // A response we could not store is not a reason to fail the request.
     console.warn('[history] could not store the response body:', e);
   }
+}
+
+function redactDetail(
+  spec: RequestSpec,
+  sentHeaders: Record<string, string>,
+  sentBody: string | undefined,
+  result: SendResult,
+  secrets: string[],
+  sentUrl?: string,
+): Omit<HistoryDetail, 'entry'> {
+  const body = result.body ?? '';
+  const stored = body.length > STORED_BODY_BYTES ? body.slice(0, STORED_BODY_BYTES) : body;
+  return {
+    request: {
+      method: spec.method,
+      url: scrub(sentUrl || spec.url, secrets),
+      headers: maskHeaders(sentHeaders, secrets),
+      body: sentBody ? scrub(sentBody, secrets) : undefined,
+    },
+    result: {
+      ...result,
+      body: scrub(stored, secrets),
+      truncated: result.truncated || stored.length < body.length,
+      streamText: result.streamText ? scrub(result.streamText, secrets) : undefined,
+    },
+  };
+}
+
+/** The request and response with the same redaction and size cap history
+ *  uses - for callers (the collection runner) that keep it only in memory. */
+export async function redactedDetail(
+  spec: RequestSpec,
+  sentHeaders: Record<string, string>,
+  sentBody: string | undefined,
+  result: SendResult,
+  sentUrl?: string,
+): Promise<Omit<HistoryDetail, 'entry'>> {
+  return redactDetail(spec, sentHeaders, sentBody, result, await secretValues(), sentUrl);
 }
 
 export async function getHistoryDetail(id: string): Promise<HistoryDetail | null> {

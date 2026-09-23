@@ -209,7 +209,8 @@ const summary = await runCollection({
 
 const report =
   args.reporter === 'json'
-    ? JSON.stringify(summary, null, 2)
+    ? // bodies are for the UI's detail panel, not for CI logs
+      JSON.stringify({ ...summary, items: summary.items.map(({ detail, ...rest }) => rest) }, null, 2)
     : args.reporter === 'junit'
       ? junit(summary)
       : `\n${summary.passed}/${summary.total} passed` +

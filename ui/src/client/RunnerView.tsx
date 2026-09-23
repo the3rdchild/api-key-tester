@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { ResponsePane } from './ResponsePane.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import type {
   CollectionsFile,
@@ -27,6 +28,8 @@ export function RunnerView() {
   const [items, setItems] = useState<RunItemResult[]>([]);
   const [last, setLast] = useState<RunSummary | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** `${requestId}-${index}` of the row shown in the detail panel */
+  const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -62,6 +65,7 @@ export function RunnerView() {
           if (msg.type === 'run:started' && msg.run) {
             setRunning(msg.run);
             setItems([]);
+            setSelected(null);
             setError(null);
           }
           if (msg.type === 'run:item' && msg.item) setItems((prev) => [...prev, msg.item!]);
@@ -116,6 +120,8 @@ export function RunnerView() {
       else next.add(id);
       return next;
     });
+
+  const selectedItem = shown.find((item, i) => `${item.requestId}-${i}` === selected) ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -259,82 +265,174 @@ export function RunnerView() {
         </div>
       )}
 
-      {/* results */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        {shown.length === 0 ? (
-          <p className="p-4 text-sm text-slate-400">
-            Nothing has run yet. Pick a folder and hit Run — every request goes in order, so
-            variables set by one are available to the next.
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {shown.map((item, i) => {
-              const open = expanded.has(`${item.requestId}-${i}`);
-              const failedChecks = item.checks.filter((c) => !c.passed);
-              return (
-                <li key={`${item.requestId}-${i}`} className="px-3 py-2 text-sm">
-                  <div className="flex items-center gap-3">
-                    <i
-                      className={`fa-solid ${
-                        item.skipped
-                          ? 'fa-minus text-slate-400'
-                          : item.passed
-                            ? 'fa-circle-check text-emerald-500'
-                            : 'fa-circle-xmark text-red-500'
-                      }`}
-                    />
-                    <span className="w-12 shrink-0 font-mono text-xs text-slate-500">
-                      {item.method}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                    {item.checks.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => toggle(`${item.requestId}-${i}`)}
-                        className="shrink-0 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        {item.checks.filter((c) => c.passed).length}/{item.checks.length} checks{' '}
-                        <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'}`} />
-                      </button>
-                    )}
-                    <span className="w-24 shrink-0 text-right font-mono text-xs text-slate-500">
-                      {item.skipped ? '—' : item.error ? 'error' : `${item.status} · ${item.latencyMs}ms`}
-                    </span>
-                  </div>
-
-                  {item.error && (
-                    <p className="ml-8 mt-1 text-xs text-red-600 dark:text-red-400">{item.error}</p>
-                  )}
-
-                  {!open && failedChecks.length > 0 && (
-                    <ul className="ml-8 mt-1">
-                      {failedChecks.map((c, j) => (
-                        <li key={j} className="text-xs text-red-600 dark:text-red-400">
-                          ✗ {c.name}
-                          {c.detail ? ` — ${c.detail}` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {open && (
-                    <ul className="ml-8 mt-1">
-                      {item.checks.map((c, j) => (
-                        <li
-                          key={j}
-                          className={`text-xs ${c.passed ? 'text-slate-500' : 'text-red-600 dark:text-red-400'}`}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* results */}
+        <div className="min-h-0 flex-1 overflow-auto md:max-w-[50%] md:border-r md:border-slate-200 md:dark:border-slate-800">
+          {shown.length === 0 ? (
+            <p className="p-4 text-sm text-slate-400">
+              Nothing has run yet. Pick a folder and hit Run — every request goes in order, so
+              variables set by one are available to the next.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {shown.map((item, i) => {
+                const key = `${item.requestId}-${i}`;
+                const open = expanded.has(key);
+                const isSelected = selected === key;
+                const failedChecks = item.checks.filter((c) => !c.passed);
+                return (
+                  <li
+                    key={key}
+                    tabIndex={0}
+                    aria-current={isSelected || undefined}
+                    onClick={() => setSelected(key)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        setSelected(key);
+                      }
+                    }}
+                    className={`cursor-pointer px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+                      isSelected
+                        ? 'bg-indigo-50 dark:bg-indigo-950/50'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <i
+                        className={`fa-solid ${
+                          item.skipped
+                            ? 'fa-minus text-slate-400'
+                            : item.passed
+                              ? 'fa-circle-check text-emerald-500'
+                              : 'fa-circle-xmark text-red-500'
+                        }`}
+                      />
+                      <span className="w-12 shrink-0 font-mono text-xs text-slate-500">
+                        {item.method}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                      {item.checks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggle(key);
+                          }}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                         >
-                          {c.passed ? '✓' : '✗'} {c.name}
-                          {c.detail ? ` — ${c.detail}` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                          {item.checks.filter((c) => c.passed).length}/{item.checks.length} checks{' '}
+                          <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'}`} />
+                        </button>
+                      )}
+                      <span className="w-24 shrink-0 text-right font-mono text-xs text-slate-500">
+                        {item.skipped ? '—' : item.error ? 'error' : `${item.status} · ${item.latencyMs}ms`}
+                      </span>
+                    </div>
+
+                    {item.error && (
+                      <p className="ml-8 mt-1 text-xs text-red-600 dark:text-red-400">{item.error}</p>
+                    )}
+
+                    {!open && failedChecks.length > 0 && (
+                      <ul className="ml-8 mt-1">
+                        {failedChecks.map((c, j) => (
+                          <li key={j} className="text-xs text-red-600 dark:text-red-400">
+                            ✗ {c.name}
+                            {c.detail ? ` — ${c.detail}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {open && (
+                      <ul className="ml-8 mt-1">
+                        {item.checks.map((c, j) => (
+                          <li
+                            key={j}
+                            className={`text-xs ${c.passed ? 'text-slate-500' : 'text-red-600 dark:text-red-400'}`}
+                          >
+                            {c.passed ? '✓' : '✗'} {c.name}
+                            {c.detail ? ` — ${c.detail}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* detail */}
+        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200 md:border-t-0 dark:border-slate-800">
+          {selectedItem ? (
+            <RunItemDetail item={selectedItem} />
+          ) : (
+            <p className="p-4 text-sm text-slate-400">
+              {shown.length ? 'Click a result to see its request and response.' : ''}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RunItemDetail({ item }: { item: RunItemResult }) {
+  const request = item.detail?.request;
+  const headers = Object.entries(request?.headers ?? {});
+
+  if (item.skipped) {
+    return <p className="p-4 text-sm text-slate-400">Skipped — this request was never sent.</p>;
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <details className="shrink-0 border-b border-slate-200 text-sm dark:border-slate-800">
+        <summary className="flex cursor-pointer items-center gap-2 px-3 py-2">
+          <span className="font-mono text-xs font-medium text-slate-500">
+            {request?.method ?? item.method}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs" title={request?.url ?? item.url}>
+            {request?.url ?? item.url}
+          </span>
+          <span className="shrink-0 text-xs text-slate-400">Request</span>
+        </summary>
+        <div className="max-h-64 overflow-auto px-3 pb-3">
+          <h4 className="mb-1 text-xs font-medium text-slate-500">Headers</h4>
+          {headers.length ? (
+            <table className="mb-2 w-full font-mono text-xs">
+              <tbody>
+                {headers.map(([k, v]) => (
+                  <tr key={k} className="align-top">
+                    <td className="whitespace-nowrap pr-3 text-slate-500">{k}</td>
+                    <td className="break-all">{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="mb-2 text-xs text-slate-400">None</p>
+          )}
+          {request?.body && (
+            <>
+              <h4 className="mb-1 text-xs font-medium text-slate-500">Body</h4>
+              <pre className="whitespace-pre-wrap break-all rounded bg-slate-50 p-2 font-mono text-xs dark:bg-slate-800/60">
+                {request.body}
+              </pre>
+            </>
+          )}
+        </div>
+      </details>
+
+      <div className="min-h-0 flex-1">
+        <ResponsePane
+          result={item.error && !item.detail?.result.status ? undefined : item.detail?.result}
+          error={item.error}
+          sending={false}
+        />
       </div>
     </div>
   );

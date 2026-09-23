@@ -11,6 +11,7 @@
 import { nanoid } from 'nanoid';
 
 import { activeEnvVars, applyEnvVarChanges, loadCollections, rootNodes } from './collections.ts';
+import { redactedDetail } from './req-history.ts';
 import { sendRequest } from './send.ts';
 import type {
   CollectionsFile,
@@ -182,6 +183,13 @@ export async function runCollection(opts: RunOptions = {}): Promise<RunSummary> 
           !outcome.result.error &&
           !outcome.result.scriptError &&
           (checks.length > 0 ? checks.every((c) => c.passed) : outcome.result.ok),
+        detail: await redactedDetail(
+          spec,
+          outcome.sentHeaders,
+          outcome.sentBody,
+          outcome.result,
+          outcome.sentUrl,
+        ),
       };
 
       summary.items.push(item);
