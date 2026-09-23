@@ -124,7 +124,7 @@ export function RunnerView() {
   const selectedItem = shown.find((item, i) => `${item.requestId}-${i}` === selected) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       {/* controls */}
       <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 p-3 dark:border-slate-800">
         <div className="grid gap-1">
@@ -265,9 +265,9 @@ export function RunnerView() {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         {/* results */}
-        <div className="min-h-0 flex-1 overflow-auto md:max-w-[50%] md:border-r md:border-slate-200 md:dark:border-slate-800">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto md:w-1/2 md:flex-none md:border-r md:border-slate-200 md:dark:border-slate-800">
           {shown.length === 0 ? (
             <p className="p-4 text-sm text-slate-400">
               Nothing has run yet. Pick a folder and hit Run — every request goes in order, so
@@ -366,7 +366,7 @@ export function RunnerView() {
         </div>
 
         {/* detail */}
-        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200 md:border-t-0 dark:border-slate-800">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-slate-200 md:border-t-0 dark:border-slate-800">
           {selectedItem ? (
             <RunItemDetail item={selectedItem} />
           ) : (
@@ -389,7 +389,7 @@ function RunItemDetail({ item }: { item: RunItemResult }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <details className="shrink-0 border-b border-slate-200 text-sm dark:border-slate-800">
         <summary className="flex cursor-pointer items-center gap-2 px-3 py-2">
           <span className="font-mono text-xs font-medium text-slate-500">
@@ -427,7 +427,7 @@ function RunItemDetail({ item }: { item: RunItemResult }) {
         </div>
       </details>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <ResponsePane
           result={item.error && !item.detail?.result.status ? undefined : item.detail?.result}
           error={item.error}
