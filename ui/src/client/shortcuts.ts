@@ -22,7 +22,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     icon: 'fa-compass',
     items: [
       { keys: [['?'], ['Alt', '/']], label: 'Show this shortcut panel' },
-      { keys: [['Ctrl', 'K'], ['Alt', 'K']], label: 'Command palette — search requests & history', scope: 'API client' },
+      { keys: [['Ctrl', 'K'], ['Alt', 'K']], label: 'Command palette: Search requests & history', scope: 'API client' },
       { keys: [['Esc']], label: 'Close dialog / panel' },
     ],
   },
