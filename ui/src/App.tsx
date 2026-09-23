@@ -6,6 +6,8 @@ import { buildRequestTemplate } from './lib/requestTemplate.ts';
 import type { RequestSpec } from '../../shared/collections.ts';
 import type { KeyEntry } from '../../shared/types.ts';
 import { RunnerView } from './client/RunnerView.tsx';
+import { isTypingTarget } from './client/shortcuts.ts';
+import { ShortcutsDialog } from './client/ShortcutsDialog.tsx';
 import { VaultView } from './components/VaultView.tsx';
 import { loadLocal, saveLocal } from './lib/storage.ts';
 import { useTheme, type Theme } from './lib/theme.ts';
@@ -24,9 +26,30 @@ export default function App() {
     return saved === 'vault' || saved === 'runner' ? saved : 'client';
   });
 
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   useEffect(() => {
     saveLocal(SCREEN_KEY, screen);
   }, [screen]);
+
+  // App-wide keys: the shortcut panel and switching screens. e.code, because
+  // Shift turns "1" into "!" (and "/" into "?") on e.key.
+  useEffect(() => {
+    const screens: Record<string, Screen> = { Digit1: 'client', Digit2: 'runner', Digit3: 'vault' };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.shiftKey && screens[e.code]) {
+        e.preventDefault();
+        setScreen(screens[e.code]!);
+        return;
+      }
+      if ((e.altKey && e.code === 'Slash') || (e.key === '?' && !e.altKey && !isTypingTarget(e.target))) {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   /** Build a provider-shaped request for this key and open it in the client.
    *  Auth points at the vault rather than pasting the secret into a header. */
@@ -61,16 +84,32 @@ export default function App() {
           Vault
         </ScreenTab>
 
+        <button
+          type="button"
+          onClick={() => setShortcutsOpen(true)}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          <i className="fa-solid fa-keyboard" />
+          <span className="hidden sm:inline">Shortcuts</span>
+        </button>
         <ThemeToggle theme={theme} onCycle={cycle} />
       </nav>
 
       <main className="min-h-0 flex-1">
         {screen === 'client' && (
-          <ClientView pendingRequest={pending} onPendingConsumed={() => setPending(null)} />
+          <ClientView
+            pendingRequest={pending}
+            onPendingConsumed={() => setPending(null)}
+            onShowShortcuts={() => setShortcutsOpen(true)}
+          />
         )}
         {screen === 'runner' && <RunnerView />}
         {screen === 'vault' && <VaultView onTryInClient={(entry) => void handOver(entry)} />}
       </main>
+
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }
@@ -89,7 +128,7 @@ function ThemeToggle({ theme, onCycle }: { theme: Theme; onCycle: () => void }) 
       onClick={onCycle}
       title={`Theme: ${meta.label} — click for ${meta.next}`}
       aria-label={`Theme: ${meta.label}. Switch to ${meta.next}.`}
-      className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
+      className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
     >
       <i className={`fa-solid ${meta.icon}`} />
       <span className="hidden sm:inline">{meta.label}</span>

@@ -12,16 +12,21 @@ import { RequestPane } from './RequestPane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { useClient } from './useClient.ts';
 import type { RequestSpec } from '../../../shared/collections.ts';
+import { clientApi } from '../lib/clientApi.ts';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 
 const SPLIT_KEY = 'client.split';
+/** How many closed tabs Alt+Shift+T can bring back. */
+const CLOSED_MAX = 20;
 
 export function ClientView({
   pendingRequest,
   onPendingConsumed,
+  onShowShortcuts,
 }: {
   pendingRequest?: Partial<RequestSpec> | null;
   onPendingConsumed?: () => void;
+  onShowShortcuts?: () => void;
 } = {}) {
   const state = useClient();
   const [toast, setToast] = useState<string | null>(null);
@@ -41,6 +46,70 @@ export function ClientView({
 
   const { active } = state;
 
+  // ─── closed tabs ──────────────────────────────────────────────────────────
+  // Kept in memory only: enough to undo a stray Alt+W, not a second history.
+  const closedRef = useRef<{ spec: RequestSpec; savedId?: string; dirty: boolean }[]>([]);
+
+  const closeTab = useCallback(
+    (tabId: string) => {
+      const tab = state.tabs.find((t) => t.id === tabId);
+      if (tab) {
+        closedRef.current = [
+          ...closedRef.current,
+          { spec: structuredClone(tab.spec), savedId: tab.savedId, dirty: tab.dirty },
+        ].slice(-CLOSED_MAX);
+      }
+      state.closeTab(tabId);
+    },
+    [state],
+  );
+
+  /** A clean saved request reopens as itself (still linked for Ctrl+S); an
+   *  edited one comes back as the edits, in a new unsaved tab. */
+  const reopenClosed = useCallback(() => {
+    const last = closedRef.current.pop();
+    if (!last) {
+      showToast('No closed tab to reopen');
+      return;
+    }
+    if (last.savedId && !last.dirty) state.openRequest(last.spec);
+    else state.newTab(last.spec);
+  }, [state, showToast]);
+
+  const cycleTab = useCallback(
+    (step: number) => {
+      const { tabs, activeId } = state;
+      if (tabs.length < 2) return;
+      const i = tabs.findIndex((t) => t.id === activeId);
+      const next = tabs[(i + step + tabs.length) % tabs.length];
+      if (next) state.setActiveId(next.id);
+    },
+    [state],
+  );
+
+  const copyCurl = useCallback(async () => {
+    if (!active) return;
+    try {
+      const { curl } = await clientApi.curl(active.spec);
+      await navigator.clipboard.writeText(curl);
+      showToast('curl copied');
+    } catch (e) {
+      showToast(`curl failed: ${e instanceof Error ? e.message : e}`);
+    }
+  }, [active, showToast]);
+
+  const formatBody = useCallback(() => {
+    if (!active) return;
+    try {
+      const parsed = JSON.parse(active.spec.body.text ?? '');
+      state.updateSpec(active.id, {
+        body: { ...active.spec.body, text: JSON.stringify(parsed, null, 2) },
+      });
+    } catch {
+      showToast('Body is not valid JSON');
+    }
+  }, [active, state, showToast]);
+
   /** A request that already lives in the collection saves straight away; a new
    *  one asks for a name and a folder first. */
   const requestSave = useCallback(() => {
@@ -55,54 +124,45 @@ export function ClientView({
   // ─── keyboard ─────────────────────────────────────────────────────────────
   // Alt-based shortcuts on purpose: Ctrl+T / Ctrl+W belong to the browser and
   // can't be intercepted from a page, so binding them would only look broken.
+  // The full list, for the help panel, is in shortcuts.ts - keep them in step.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === 'Enter') {
+      const key = e.key.toLowerCase();
+      const run = (fn: () => void) => {
         e.preventDefault();
-        if (active) void state.send(active.id);
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        requestSave();
-        return;
-      }
-      if (e.altKey && e.key.toLowerCase() === 't') {
-        e.preventDefault();
-        state.newTab();
-        return;
-      }
-      if (e.altKey && e.key.toLowerCase() === 'w') {
-        e.preventDefault();
-        if (active) state.closeTab(active.id);
-        return;
-      }
-      if (e.altKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        if (active) state.duplicateTab(active.id);
-        return;
-      }
-      if (e.altKey && e.key.toLowerCase() === 'l') {
-        e.preventDefault();
-        document.getElementById('req-url')?.focus();
-        return;
-      }
-      if (e.altKey && e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        setImportOpen(true);
-        return;
-      }
+        fn();
+      };
+      if (mod && e.key === 'Enter') return run(() => active && void state.send(active.id));
+      if (mod && key === 's') return run(requestSave);
       // Ctrl+K is Firefox's search bar, but a page may take it - and Alt+K is
       // there for when it doesn't.
-      if ((mod && e.key.toLowerCase() === 'k') || (e.altKey && e.key.toLowerCase() === 'k')) {
-        e.preventDefault();
-        setPaletteOpen((v) => !v);
+      if ((mod || e.altKey) && key === 'k') return run(() => setPaletteOpen((v) => !v));
+      if (!e.altKey || mod) return;
+
+      // Shifted chords first, so Alt+Shift+T doesn't fall through to Alt+T.
+      if (e.shiftKey) {
+        if (key === 't') return run(reopenClosed);
+        if (key === 'f') return run(formatBody);
+        if (key === 'i')
+          return run(() => window.dispatchEvent(new CustomEvent('keyway:import-collection')));
+        if (key === 'e')
+          return run(() => window.dispatchEvent(new CustomEvent('keyway:export-collection')));
+        return;
       }
+      // e.code for the brackets: their e.key moves around between layouts.
+      if (e.code === 'BracketRight') return run(() => cycleTab(1));
+      if (e.code === 'BracketLeft') return run(() => cycleTab(-1));
+      if (key === 't') return run(() => state.newTab());
+      if (key === 'w') return run(() => active && closeTab(active.id));
+      if (key === 'd') return run(() => active && state.duplicateTab(active.id));
+      if (key === 'l') return run(() => document.getElementById('req-url')?.focus());
+      if (key === 'i') return run(() => setImportOpen(true));
+      if (key === 'c') return run(() => void copyCurl());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, state, showToast, requestSave]);
+  }, [active, state, requestSave, reopenClosed, formatBody, cycleTab, closeTab, copyCurl]);
 
   // ─── handover from the vault ──────────────────────────────────────────────
   // The vault switches screens and hands over a request; this side has to open
@@ -151,9 +211,12 @@ export function ClientView({
       run: () => active && void state.send(active.id),
     },
     { id: 'curl', label: 'Import cURL', hint: 'Alt+I', icon: 'fa-terminal', run: () => setImportOpen(true) },
+    { id: 'copy-curl', label: 'Copy request as cURL', hint: 'Alt+C', icon: 'fa-clipboard', run: () => void copyCurl() },
+    { id: 'format', label: 'Format JSON body', hint: 'Alt+Shift+F', icon: 'fa-align-left', run: formatBody },
     {
       id: 'import',
       label: 'Import collection (Postman · Insomnia · OpenAPI)',
+      hint: 'Alt+Shift+I',
       icon: 'fa-file-import',
       // The dialog lives in the sidebar; an event keeps the two from having to
       // know about each other.
@@ -162,6 +225,7 @@ export function ClientView({
     {
       id: 'export',
       label: 'Export collection (Postman · .http · JSON)',
+      hint: 'Alt+Shift+E',
       icon: 'fa-file-export',
       run: () => window.dispatchEvent(new CustomEvent('keyway:export-collection')),
     },
@@ -177,7 +241,15 @@ export function ClientView({
       label: 'Close this tab',
       hint: 'Alt+W',
       icon: 'fa-xmark',
-      run: () => active && state.closeTab(active.id),
+      run: () => active && closeTab(active.id),
+    },
+    { id: 'reopen', label: 'Reopen closed tab', hint: 'Alt+Shift+T', icon: 'fa-rotate-left', run: reopenClosed },
+    {
+      id: 'shortcuts',
+      label: 'Keyboard shortcuts',
+      hint: '?',
+      icon: 'fa-keyboard',
+      run: () => onShowShortcuts?.(),
     },
   ];
 
@@ -211,7 +283,7 @@ export function ClientView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => state.closeTab(tab.id)}
+                  onClick={() => closeTab(tab.id)}
                   aria-label={`Close ${tab.spec.name || 'tab'}`}
                   className="mr-1 h-6 w-6 rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
                 >
@@ -240,9 +312,14 @@ export function ClientView({
           </button>
 
           <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
-            <span title="Ctrl+K search · Alt+T new · Alt+W close · Alt+D duplicate · Alt+I import cURL · Ctrl+Enter send · Ctrl+S save · Alt+L focus URL">
+            <button
+              type="button"
+              onClick={() => onShowShortcuts?.()}
+              title="All keyboard shortcuts (?)"
+              className="rounded px-1.5 py-0.5 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            >
               <i className="fa-solid fa-keyboard" /> shortcuts
-            </span>
+            </button>
             <span
               className={state.wsConnected ? 'text-emerald-600' : 'text-slate-400'}
               title={state.wsConnected ? 'live updates connected' : 'offline'}
