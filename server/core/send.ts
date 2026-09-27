@@ -16,6 +16,7 @@ import { completionMetaFromBody } from './llm-meta.ts';
 import { runScript, type ScriptOutcome } from './script.ts';
 import { runAssertions } from './assert.ts';
 import { allRuntimeVars, runtimeLookup, setRuntimeVars } from './runtime-vars.ts';
+import { toSnippet, type CodeLang } from './codegen.ts';
 import type {
   CompletionMeta,
   RedirectHop,
@@ -536,12 +537,26 @@ function errorResult(error: string, latencyMs: number, redirects: RedirectHop[] 
   };
 }
 
-/** Render a request as a copy-pasteable curl command (same interpolation and
- *  auth handling as an actual send, so what you copy is what was sent). */
-export async function toCurl(
+/** A request resolved to what actually goes on the wire: {{vars}} filled in,
+ *  vault auth applied, body serialized. Shared by every code-snippet formatter
+ *  (see codegen.ts) so what you copy is what Keyway would send. */
+export interface ResolvedRequest {
+  method: string;
+  url: string;
+  /** in the order they'd be sent (Headers lowercases the names) */
+  headers: [string, string][];
+  /** serialized body for non-multipart requests */
+  body?: string;
+  /** fields for a multipart body */
+  multipart?: { key: string; kind: 'text' | 'file'; value?: string; filename?: string }[];
+  contentType?: string;
+  followRedirects: boolean;
+}
+
+export async function resolveRequest(
   rawSpec: RequestSpec,
   vars: Record<string, string> = {},
-): Promise<string> {
+): Promise<ResolvedRequest> {
   const vault =
     rawSpec.auth?.type === 'vault' && rawSpec.auth.keyId
       ? await resolveVaultAuth(rawSpec.auth.keyId)
@@ -571,25 +586,45 @@ export async function toCurl(
     }
   }
 
-  const parts = [`curl -X ${spec.method.toUpperCase()} ${quote(url)}`];
-  headers.forEach((v, k) => parts.push(`  -H ${quote(`${k}: ${v}`)}`));
-  if (spec.body.mode === 'multipart') {
-    for (const row of spec.body.multipart ?? []) {
-      if (!row.enabled || !row.key) continue;
-      parts.push(
-        row.type === 'file'
-          ? `  -F ${quote(`${row.key}=@${row.filename ?? 'file'}`)}`
-          : `  -F ${quote(`${row.key}=${row.value ?? ''}`)}`,
-      );
-    }
-  } else if (typeof built.body === 'string' && built.body) {
-    parts.push(`  --data ${quote(built.body)}`);
-  }
-  if (!spec.settings?.followRedirects) parts.push('  --max-redirs 0');
-  else parts.push('  -L');
-  return parts.join(' \\\n');
+  const headerPairs: [string, string][] = [];
+  headers.forEach((v, k) => headerPairs.push([k, v]));
+  const multipart =
+    spec.body.mode === 'multipart'
+      ? (spec.body.multipart ?? [])
+          .filter((row) => row.enabled && row.key)
+          .map((row) => ({
+            key: row.key,
+            kind: row.type === 'file' ? ('file' as const) : ('text' as const),
+            value: row.value,
+            filename: row.filename,
+          }))
+      : undefined;
+
+  return {
+    method: spec.method.toUpperCase(),
+    url,
+    headers: headerPairs,
+    body: typeof built.body === 'string' && built.body ? built.body : undefined,
+    multipart,
+    contentType: built.contentType,
+    followRedirects: spec.settings?.followRedirects ?? true,
+  };
 }
 
-function quote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
+/** Render a request as copy-pasteable code (curl, fetch, requests, …). Same
+ *  interpolation and auth as an actual send, so what you copy is what was sent. */
+export async function toCode(
+  rawSpec: RequestSpec,
+  lang: CodeLang,
+  vars: Record<string, string> = {},
+): Promise<string> {
+  return toSnippet(await resolveRequest(rawSpec, vars), lang);
+}
+
+/** Back-compat: the curl endpoint and older callers. */
+export async function toCurl(
+  rawSpec: RequestSpec,
+  vars: Record<string, string> = {},
+): Promise<string> {
+  return toCode(rawSpec, 'curl', vars);
 }

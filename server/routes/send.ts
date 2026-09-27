@@ -9,7 +9,8 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 
-import { sendRequest, toCurl } from '../core/send.ts';
+import { sendRequest, toCurl, toCode } from '../core/send.ts';
+import { CODE_LANGS, type CodeLang } from '../core/codegen.ts';
 import { activeEnvVars, applyEnvVarChanges } from '../core/collections.ts';
 import { record } from '../core/req-history.ts';
 import { broadcast } from './ws.ts';
@@ -96,4 +97,14 @@ sendRouter.post('/curl', async (c) => {
   if (!payload?.spec) return c.json({ error: 'Missing spec' }, 400);
   const vars = { ...(await activeEnvVars()), ...(payload.vars ?? {}) };
   return c.json({ curl: await toCurl(payload.spec, vars) });
+});
+
+/** POST /api/send/code - render the request as a code snippet in `lang`. */
+sendRouter.post('/code', async (c) => {
+  const payload = (await c.req.json().catch(() => ({}))) as SendPayload & { lang?: CodeLang };
+  if (!payload?.spec) return c.json({ error: 'Missing spec' }, 400);
+  const lang = payload.lang ?? 'curl';
+  if (!CODE_LANGS.some((l) => l.id === lang)) return c.json({ error: `Unknown language: ${lang}` }, 400);
+  const vars = { ...(await activeEnvVars()), ...(payload.vars ?? {}) };
+  return c.json({ code: await toCode(payload.spec, lang, vars) });
 });

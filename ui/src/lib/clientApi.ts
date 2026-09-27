@@ -226,4 +226,11 @@ export const clientApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spec }),
     }).then((r) => json<{ curl: string }>(r)),
+
+  code: (spec: RequestSpec, lang: string) =>
+    fetch('/api/send/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec, lang }),
+    }).then((r) => json<{ code: string }>(r)),
 };

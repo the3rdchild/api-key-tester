@@ -69,6 +69,7 @@ The app opens on the **API client** (the key vault is the second tab). It is the
 - **Sidebar** — folders nest, and both folders and requests rename in place (pencil, or double-click). Folders start collapsed and remember what you opened
 - **Realtime** — `WS` and `SSE` tabs (the buttons next to the tab bar) test WebSocket and Server-Sent-Events endpoints. The connection is made **server-side**, exactly like a send, so it reuses vault keys, `{{vars}}` and arbitrary headers — none of which the browser's own `WebSocket`/`EventSource` can set. A WS tab connects, sends frames (`Ctrl+Enter`) and shows a live sent/received log with timestamps; an SSE tab streams events read-only. Subprotocols, a bearer token, a custom header or a vault key all attach on connect, and the session survives switching tabs
 - **Copy as curl** — exactly what was sent, auth included
+- **Generate code** — the `</>` button (or the command palette) renders the current request as **curl**, **JavaScript** (`fetch` or `axios`), **Python** (`requests`) or **HTTPie**. Rendered server-side through the same pipeline as a send, so `{{vars}}`, vault auth and the body are already resolved — a JSON body comes out as a real object/dict, multipart as `FormData`/`files=`
 
 Dependencies are installed **inside the container** (`docker compose exec keyway bun install`) — `bun install` on the host stalls on this NTFS mount. Typechecking runs there too: `docker compose exec keyway bunx tsc --noEmit`.
 

@@ -39,6 +39,8 @@ interface Props {
   onSend: () => void;
   onSave: () => void;
   onToast: (msg: string) => void;
+  /** open the "generate code" dialog for this request */
+  onCodegen: () => void;
   /** define a missing {{var}} without leaving the request */
   onDefineVar: (name: string) => void;
 }
@@ -53,6 +55,7 @@ export function RequestPane({
   onSend,
   onSave,
   onToast,
+  onCodegen,
   onDefineVar,
 }: Props) {
   const [section, setSection] = useState<Section>('params');
@@ -157,6 +160,14 @@ export function RequestPane({
           className="h-9 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
         >
           <i className="fa-solid fa-terminal" />
+        </button>
+        <button
+          type="button"
+          onClick={onCodegen}
+          title="Generate code (fetch, requests, …)"
+          className="h-9 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          <i className="fa-solid fa-code" />
         </button>
         </div>
 

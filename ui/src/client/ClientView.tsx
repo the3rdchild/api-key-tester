@@ -11,6 +11,7 @@ import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
 import { RealtimePane } from './realtime/RealtimePane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
+import { CodeGenDialog } from './CodeGenDialog.tsx';
 import { useClient } from './useClient.ts';
 import type { RequestSpec } from '../../../shared/collections.ts';
 import { clientApi } from '../lib/clientApi.ts';
@@ -34,6 +35,7 @@ export function ClientView({
   const [importOpen, setImportOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [codegenOpen, setCodegenOpen] = useState(false);
   const [split, setSplit] = useState<number>(() => {
     const saved = Number(loadLocal(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
@@ -223,6 +225,7 @@ export function ClientView({
     },
     { id: 'curl', label: 'Import cURL', hint: 'Alt+I', icon: 'fa-terminal', run: () => setImportOpen(true) },
     { id: 'copy-curl', label: 'Copy request as cURL', hint: 'Alt+C', icon: 'fa-clipboard', run: () => void copyCurl() },
+    { id: 'codegen', label: 'Generate code (fetch · axios · requests · HTTPie)', icon: 'fa-code', run: () => active?.kind === 'http' && setCodegenOpen(true) },
     { id: 'format', label: 'Format JSON body', hint: 'Alt+Shift+F', icon: 'fa-align-left', run: formatBody },
     {
       id: 'import',
@@ -391,6 +394,7 @@ export function ClientView({
                   onSend={() => void state.send(active.id)}
                   onSave={requestSave}
                   onToast={showToast}
+                  onCodegen={() => setCodegenOpen(true)}
                   onDefineVar={async (name) => {
                     const value = window.prompt(`Value for {{${name}}}`, '');
                     if (value === null) return;
@@ -455,6 +459,13 @@ export function ClientView({
           showToast(warnings.length ? `Imported with ${warnings.length} warning(s)` : 'Imported');
           if (warnings.length) console.warn('[import-curl]', warnings);
         }}
+      />
+
+      <CodeGenDialog
+        open={codegenOpen}
+        spec={active && active.kind === 'http' ? active.spec : null}
+        onClose={() => setCodegenOpen(false)}
+        onToast={showToast}
       />
 
       {toast && (
