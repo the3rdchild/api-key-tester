@@ -387,6 +387,75 @@ export function emptyRequest(id: string, name = 'Untitled request'): RequestSpec
   };
 }
 
+// ─── Realtime (WebSocket / SSE) ───────────────────────────────────────────────
+// A second kind of tab: instead of one request → one response, a realtime tab
+// holds a long-lived connection and a running log of frames. The connection is
+// made server-side (like every send) so it reuses vault auth, {{vars}} and
+// arbitrary headers — none of which the browser's own WebSocket/EventSource can
+// set. `ws` sends and receives; `sse` is receive-only (an HTTP GET stream).
+
+export type RealtimeKind = 'ws' | 'sse';
+
+export interface RealtimeSpec {
+  id: string;
+  name: string;
+  kind: RealtimeKind;
+  url: string;
+  /** Sec-WebSocket-Protocol values offered on connect; ignored for SSE. */
+  protocols: string[];
+  headers: KV[];
+  auth: RequestAuth;
+  /** the message currently typed in the composer (ws only), kept so a reload
+   *  or tab switch doesn't lose it */
+  draft?: string;
+}
+
+export function emptyRealtime(id: string, kind: RealtimeKind = 'ws'): RealtimeSpec {
+  return {
+    id,
+    name: '',
+    kind,
+    url: '',
+    protocols: [],
+    headers: [],
+    auth: { type: 'none' },
+    draft: '',
+  };
+}
+
+/** One line in a realtime session log. */
+export interface RealtimeMessage {
+  id: string;
+  dir: 'sent' | 'recv' | 'system';
+  /** epoch ms */
+  at: number;
+  data: string;
+  /** recv only: the frame was binary and `data` is its base64 */
+  binary?: boolean;
+}
+
+/** Frames the browser sends up the proxy socket. */
+export type RealtimeClientFrame =
+  | { t: 'open'; spec: RealtimeSpec; vars?: Record<string, string> }
+  | { t: 'send'; data: string }
+  | { t: 'close' };
+
+/** Frames the server pushes back down the proxy socket. */
+export type RealtimeServerFrame =
+  | {
+      t: 'status';
+      state: 'connecting' | 'open' | 'closed' | 'error';
+      code?: number;
+      reason?: string;
+      protocol?: string;
+      /** advisory (vault note, unsupported auth, resolved URL, …) */
+      note?: string;
+      /** {{vars}} referenced but not defined, echoed once on connect */
+      missing?: string[];
+    }
+  | { t: 'message'; data: string; binary?: boolean; at: number }
+  | { t: 'error'; message: string };
+
 /** The everyday verbs — anything outside this set gets a gentle "unusual method" hint. */
 export const STANDARD_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 

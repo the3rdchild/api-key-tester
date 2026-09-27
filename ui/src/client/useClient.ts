@@ -10,9 +10,12 @@ import { clientApi, type SendResponse } from '../lib/clientApi.ts';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { api } from '../lib/api.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
-import { emptyRequest } from '../../../shared/collections.ts';
+import { emptyRealtime, emptyRequest } from '../../../shared/collections.ts';
+import { destroySession } from './useRealtime.ts';
 import type {
   CollectionsFile,
+  RealtimeKind,
+  RealtimeSpec,
   ReqHistoryEntry,
   RequestSpec,
   SendResult,
@@ -22,7 +25,12 @@ const TABS_KEY = 'client.tabs.v1';
 
 export interface Tab {
   id: string;
+  /** 'http' is the request/response tab; 'ws'/'sse' are realtime tabs whose
+   *  editable state lives in `rt` instead of `spec`. */
+  kind: 'http' | 'ws' | 'sse';
   spec: RequestSpec;
+  /** present on realtime tabs */
+  rt?: RealtimeSpec;
   /** id in collections.json once saved */
   savedId?: string;
   dirty: boolean;
@@ -47,7 +55,9 @@ export interface Tab {
 interface Persisted {
   tabs: {
     id: string;
+    kind?: 'http' | 'ws' | 'sse';
     spec: RequestSpec;
+    rt?: RealtimeSpec;
     savedId?: string;
     dirty: boolean;
     historyId?: string;
@@ -62,7 +72,23 @@ function uid(): string {
 function freshTab(spec?: Partial<RequestSpec>): Tab {
   return {
     id: uid(),
+    kind: 'http',
     spec: { ...emptyRequest(uid()), ...spec },
+    dirty: false,
+    sending: false,
+    files: {},
+  };
+}
+
+function freshRealtimeTab(kind: RealtimeKind): Tab {
+  const id = uid();
+  return {
+    id,
+    kind,
+    // realtime tabs still carry a (mostly unused) spec so tab-bar code that
+    // reads tab.spec never trips; the real state is in `rt`.
+    spec: emptyRequest(uid(), ''),
+    rt: emptyRealtime(uid(), kind),
     dirty: false,
     sending: false,
     files: {},
@@ -82,7 +108,7 @@ function restore(): Persisted {
 export function useClient() {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const saved = restore();
-    const list = saved.tabs.map((t) => ({ ...t, sending: false, files: {} }) as Tab);
+    const list = saved.tabs.map((t) => ({ ...t, kind: t.kind ?? 'http', sending: false, files: {} }) as Tab);
     return list.length ? list : [freshTab()];
   });
   const [activeId, setActiveId] = useState<string | null>(() => {
@@ -111,9 +137,11 @@ export function useClient() {
   // persist tab state (files are dropped on purpose)
   useEffect(() => {
     const payload: Persisted = {
-      tabs: tabs.map(({ id, spec, savedId, dirty, historyId }) => ({
+      tabs: tabs.map(({ id, kind, spec, rt, savedId, dirty, historyId }) => ({
         id,
+        kind,
         spec,
+        rt,
         savedId,
         dirty,
         historyId,
@@ -245,7 +273,21 @@ export function useClient() {
     return t;
   }, []);
 
+  const newRealtimeTab = useCallback((kind: RealtimeKind) => {
+    const t = freshRealtimeTab(kind);
+    setTabs((prev) => [...prev, t]);
+    setActiveId(t.id);
+    return t;
+  }, []);
+
+  const updateRealtime = useCallback((tabId: string, patch: Partial<RealtimeSpec>) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId && t.rt ? { ...t, rt: { ...t.rt, ...patch } } : t)),
+    );
+  }, []);
+
   const closeTab = useCallback((tabId: string) => {
+    destroySession(tabId); // no-op for http tabs; ends any realtime connection
     setTabs((prev) => prev.filter((t) => t.id !== tabId));
   }, []);
 
@@ -253,11 +295,17 @@ export function useClient() {
     (tabId: string) => {
       const src = tabs.find((t) => t.id === tabId);
       if (!src) return;
-      const copy: Tab = {
-        ...freshTab(),
-        spec: { ...structuredClone(src.spec), id: uid(), name: `${src.spec.name} copy` },
-        dirty: true,
-      };
+      const copy: Tab =
+        src.kind === 'http'
+          ? {
+              ...freshTab(),
+              spec: { ...structuredClone(src.spec), id: uid(), name: `${src.spec.name} copy` },
+              dirty: true,
+            }
+          : {
+              ...freshRealtimeTab(src.kind),
+              rt: { ...structuredClone(src.rt!), id: uid(), name: src.rt?.name ? `${src.rt.name} copy` : '' },
+            };
       setTabs((prev) => [...prev, copy]);
       setActiveId(copy.id);
     },
@@ -434,6 +482,8 @@ export function useClient() {
     tokenTick,
     wsConnected,
     newTab,
+    newRealtimeTab,
+    updateRealtime,
     closeTab,
     duplicateTab,
     openRequest,

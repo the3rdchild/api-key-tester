@@ -9,7 +9,6 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import type { ServerWebSocket } from 'bun';
 
 import { keysRouter } from './routes/keys.ts';
 import { testRouter } from './routes/test.ts';
@@ -30,7 +29,9 @@ import { setTokenChangeEmitter } from './core/oauth2.ts';
 import { setRunEmitter } from './core/collection-runner.ts';
 import { setMatrixEmitter } from './core/matrix.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
+import { createBridge, type RealtimeBridge } from './core/realtime.ts';
 import type { WSEvent } from '../shared/types.ts';
+import type { RealtimeClientFrame, RealtimeServerFrame } from '../shared/collections.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, '..');
@@ -155,32 +156,49 @@ const HOST = process.env.HOST ?? '127.0.0.1';
 await loadStore();
 await loadCollections();
 
-const server = Bun.serve<undefined>({
+// Two kinds of socket share the one Bun WebSocket handler: the push-only
+// broadcast hub at /live, and per-connection realtime proxies at /api/realtime
+// (each owns a bridge to one upstream WS/SSE).
+type SocketData = { kind: 'live'; unsub?: () => void } | { kind: 'realtime'; bridge?: RealtimeBridge };
+
+const server = Bun.serve<SocketData>({
   port: PORT,
   hostname: HOST,
   fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === '/live') {
-      const ok = server.upgrade(req, { data: undefined });
-      if (ok) return undefined;
+      if (server.upgrade(req, { data: { kind: 'live' } })) return undefined;
+      return new Response('Upgrade failed', { status: 400 });
+    }
+    if (url.pathname === '/api/realtime') {
+      if (server.upgrade(req, { data: { kind: 'realtime' } })) return undefined;
       return new Response('Upgrade failed', { status: 400 });
     }
     return app.fetch(req);
   },
   websocket: {
     open(ws) {
-      const unsub = addSocket({
+      if (ws.data.kind === 'realtime') {
+        ws.data.bridge = createBridge((frame) => ws.send(JSON.stringify(frame)));
+        return;
+      }
+      ws.data.unsub = addSocket({
         send: (data) => ws.send(data),
         close: () => ws.close(),
       });
-      (ws as unknown as { _unsub?: () => void })._unsub = unsub;
       ws.send(JSON.stringify({ type: 'hello', ts: new Date().toISOString() }));
     },
-    close(ws: ServerWebSocket<unknown>) {
-      (ws as unknown as { _unsub?: () => void })._unsub?.();
+    message(ws, message) {
+      if (ws.data.kind !== 'realtime') return; // /live is push-only
+      try {
+        void ws.data.bridge?.handle(JSON.parse(String(message)) as RealtimeClientFrame);
+      } catch {
+        ws.send(JSON.stringify({ t: 'error', message: 'Malformed frame' } satisfies RealtimeServerFrame));
+      }
     },
-    message() {
-      // ignore client messages; this is a push-only channel
+    close(ws) {
+      if (ws.data.kind === 'realtime') ws.data.bridge?.dispose();
+      else ws.data.unsub?.();
     },
   },
 });

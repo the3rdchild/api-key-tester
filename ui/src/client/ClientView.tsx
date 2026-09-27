@@ -9,6 +9,7 @@ import { ImportCurlDialog } from './ImportCurlDialog.tsx';
 import { SaveRequestDialog } from './SaveRequestDialog.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
+import { RealtimePane } from './RealtimePane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { useClient } from './useClient.ts';
 import type { RequestSpec } from '../../../shared/collections.ts';
@@ -88,7 +89,7 @@ export function ClientView({
   );
 
   const copyCurl = useCallback(async () => {
-    if (!active) return;
+    if (!active || active.kind !== 'http') return;
     try {
       const { curl } = await clientApi.curl(active.spec);
       await navigator.clipboard.writeText(curl);
@@ -99,7 +100,7 @@ export function ClientView({
   }, [active, showToast]);
 
   const formatBody = useCallback(() => {
-    if (!active) return;
+    if (!active || active.kind !== 'http') return;
     try {
       const parsed = JSON.parse(active.spec.body.text ?? '');
       state.updateSpec(active.id, {
@@ -113,7 +114,7 @@ export function ClientView({
   /** A request that already lives in the collection saves straight away; a new
    *  one asks for a name and a folder first. */
   const requestSave = useCallback(() => {
-    if (!active) return;
+    if (!active || active.kind !== 'http') return;
     if (active.savedId) {
       void state.saveTab(active.id).then(() => showToast('Saved'));
       return;
@@ -277,8 +278,16 @@ export function ClientView({
                   aria-current={isActive ? 'true' : undefined}
                   className="flex max-w-[14rem] items-center gap-2 py-1.5 pl-3 pr-1 text-xs"
                 >
-                  <span className="font-mono font-semibold text-slate-500">{tab.spec.method}</span>
-                  <span className="truncate">{tab.spec.name || tab.spec.url || 'Untitled'}</span>
+                  <span
+                    className={`font-mono font-semibold ${tab.kind === 'http' ? 'text-slate-500' : 'text-teal-600 dark:text-teal-400'}`}
+                  >
+                    {tab.kind === 'http' ? tab.spec.method : tab.kind.toUpperCase()}
+                  </span>
+                  <span className="truncate">
+                    {tab.kind === 'http'
+                      ? tab.spec.name || tab.spec.url || 'Untitled'
+                      : tab.rt?.name || tab.rt?.url || 'Untitled'}
+                  </span>
                   {tab.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
                 </button>
                 <button
@@ -311,6 +320,24 @@ export function ClientView({
             <i className="fa-solid fa-terminal text-xs" /> cURL
           </button>
 
+          <span className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-slate-700" />
+          <button
+            type="button"
+            onClick={() => state.newRealtimeTab('ws')}
+            title="New WebSocket tab"
+            className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
+          >
+            <i className="fa-solid fa-bolt text-xs" /> WS
+          </button>
+          <button
+            type="button"
+            onClick={() => state.newRealtimeTab('sse')}
+            title="New Server-Sent Events tab"
+            className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
+          >
+            <i className="fa-solid fa-tower-broadcast text-xs" /> SSE
+          </button>
+
           <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
             <button
               type="button"
@@ -329,9 +356,18 @@ export function ClientView({
           </span>
         </div>
 
-        {/* request | response */}
+        {/* request | response (http) or a single realtime pane */}
         <div ref={splitRef} className="flex min-h-0 flex-1">
-          {active ? (
+          {active && active.kind !== 'http' ? (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <RealtimePane
+                tab={active}
+                vaultKeys={state.vaultKeys}
+                onRt={(patch) => state.updateRealtime(active.id, patch)}
+                onToast={showToast}
+              />
+            </div>
+          ) : active ? (
             <>
               <div style={{ width: `${split * 100}%` }} className="min-w-0 overflow-hidden">
                 <RequestPane
