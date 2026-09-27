@@ -1,16 +1,31 @@
 // End to end through the realtime path: client store (useRealtime) → proxy
 // socket (createBridge, wired like server/index.ts) → a fake upstream serving
-// WebSocket and SSE, LLM-shaped streams included.
+// WebSocket and SSE, LLM-shaped streams included — and the request history
+// those sessions are written to.
 
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 
 import type { RealtimeBridge } from '../server/core/realtime.ts';
-import type { RealtimeClientFrame, RealtimeSpec } from '../shared/collections.ts';
+import type { RealtimeHistoryEvent } from '../server/core/realtime-history.ts';
+import type { RealtimeClientFrame, RealtimeHistoryDetail, RealtimeSpec } from '../shared/collections.ts';
 
-// The bridge folds in the active environment's vars. Reading them for real
-// would create collections.json in a fresh clone, so the environment is empty.
+// Nothing here may touch the real data: the history is written to a temp
+// dir, the vault holds one fake key (so scrubbing has something to scrub),
+// and the environment is empty — reading it for real would even create
+// collections.json in a fresh clone.
+const DATA = mkdtempSync(join(tmpdir(), 'keyway-test-'));
+const VAULT_SECRET = 'sk-vault-secret-0123456789abcdef';
+mock.module('../server/core/store.ts', () => ({
+  ROOT_DIR: DATA,
+  getAllKeys: async () => [{ id: 'k1', provider: 'openai', credentials: { apiKey: VAULT_SECRET } }],
+}));
 mock.module('../server/core/collections.ts', () => ({ activeEnvVars: async () => ({}) }));
 const { createBridge } = await import('../server/core/realtime.ts');
+const { setRealtimeHistoryEmitter } = await import('../server/core/realtime-history.ts');
+const hist = await import('../server/core/req-history.ts');
 const rt = await import('../ui/src/client/realtime/useRealtime.ts');
 const { compactDeltas, countEvents } = await import('../ui/src/client/realtime/logView.ts');
 
@@ -120,6 +135,7 @@ Object.assign(globalThis, {
 afterAll(() => {
   upstream.stop(true);
   proxy.stop(true);
+  rmSync(DATA, { recursive: true, force: true });
 });
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -457,5 +473,165 @@ describe('heartbeat', () => {
     const after = beats(D);
     await Bun.sleep(200);
     expect(beats(D)).toBe(after);
+  });
+});
+
+// ─── request history ────────────────────────────────────────────────────────
+
+describe('history', () => {
+  const events: RealtimeHistoryEvent[] = [];
+  setRealtimeHistoryEmitter((e) => events.push(e));
+
+  const entriesFor = async (url: string) => (await hist.listHistory()).filter((e) => e.url === url);
+  const detailOf = async (id: string) => (await hist.getHistoryDetail(id)) as RealtimeHistoryDetail;
+  async function until(pred: () => Promise<boolean>, ms = 4000) {
+    const end = Date.now() + ms;
+    while (!(await pred())) {
+      if (Date.now() > end) throw new Error('timed out waiting');
+      await Bun.sleep(20);
+    }
+  }
+  const at = (path: string, kind: 'ws' | 'sse' = 'ws') =>
+    `${kind === 'ws' ? 'ws' : 'http'}://127.0.0.1:${upstream.port}${path}`;
+
+  test('a WS session is one entry: written on connect, rewritten when it ends', async () => {
+    const T = 'hist-ws';
+    const url = at('/ws?h=1');
+    rt.connect(T, { ...spec('ws', '/ws'), url, name: 'echo' }, {});
+    await waitFor(() => snap(T).state === 'open');
+    await until(async () => (await entriesFor(url)).length === 1);
+    let [e] = await entriesFor(url);
+    expect(e).toMatchObject({ method: 'WS', kind: 'ws', status: 101, name: 'echo' });
+    expect(e!.realtime?.durationMs).toBeUndefined(); // still open
+    await hist.setPinned(e!.id, true);
+
+    rt.sendMessage(T, 'hello');
+    await waitFor(() => snap(T).log.some((m) => m.type === 'receive'));
+    rt.disconnect(T);
+    await until(async () => (await entriesFor(url))[0]?.realtime?.durationMs != null);
+
+    [e] = await entriesFor(url);
+    expect(e!.pinned).toBe(true); // the rewrite keeps the pin
+    expect(e!.realtime).toMatchObject({ sent: 1, sentBytes: 5, received: 1, receivedBytes: 5, attempts: 1 });
+    const d = await detailOf(e!.id);
+    expect(d.transcript.map((m) => [m.type, m.data])).toEqual([
+      ['info', `WS ${url}`],
+      ['info', 'Connected'],
+      ['send', 'hello'],
+      ['receive', 'hello'],
+      ['info', 'Disconnected'],
+    ]);
+    expect(d.spec).toMatchObject({ kind: 'ws', url, name: 'echo' });
+    expect(events.filter((x) => x.entry.id === e!.id).map((x) => x.type)).toEqual(['appended', 'updated']);
+  });
+
+  test('reconnects fold into the same entry', async () => {
+    const T = 'hist-rc';
+    const url = at('/ws?h=2');
+    rt.setOptions(T, { autoReconnect: true });
+    rt.connect(T, { ...spec('ws', '/ws'), url }, {});
+    await waitFor(() => snap(T).state === 'open');
+    rt.sendMessage(T, 'bye');
+    await waitFor(() => snap(T).state === 'reconnecting');
+    await waitFor(() => snap(T).state === 'open', 3000);
+    rt.disconnect(T);
+    await until(async () => {
+      const [e] = await entriesFor(url);
+      return e?.realtime?.attempts === 2 && e.realtime.durationMs != null;
+    });
+    const list = await entriesFor(url);
+    expect(list.length).toBe(1);
+    const lines = (await detailOf(list[0]!.id)).transcript.map((m) => `${m.type}:${m.data}`);
+    expect(lines).toContain('error:Closed · code 4000 · app says bye');
+    expect(lines).toContain('info:Reconnect · attempt 2');
+  });
+
+  test('a failed connect is recorded, with its HTTP status', async () => {
+    const T = 'hist-404';
+    const url = at('/missing?h=3', 'sse');
+    rt.connect(T, { ...spec('sse', '/missing'), url }, {});
+    await until(async () => (await entriesFor(url)).length === 1);
+    expect((await entriesFor(url))[0]).toMatchObject({ method: 'SSE', status: 404, error: 'HTTP 404 Not Found' });
+  });
+
+  test('an LLM stream keeps its stitched completion', async () => {
+    const url = at('/openai?h=4', 'sse');
+    rt.connect('hist-llm', { ...spec('sse', '/openai'), url }, {});
+    await until(async () => (await entriesFor(url))[0]?.realtime?.durationMs != null);
+    const [e] = await entriesFor(url);
+    expect((await detailOf(e!.id)).streamText).toBe('Hello world');
+  });
+
+  test('secrets never reach the disk; {{var}} references survive', async () => {
+    const T = 'hist-secret';
+    const url = at(`/ws?h=5&key=${VAULT_SECRET}`);
+    rt.connect(
+      T,
+      {
+        ...spec('ws', '/ws'),
+        url,
+        headers: [
+          { key: 'X-Api-Key', value: '{{apiKey}}', enabled: true },
+          { key: 'Cookie', value: 'session=literal-cookie-value', enabled: true },
+        ],
+        auth: { type: 'bearer', token: 'literal-bearer-token-abc' },
+      },
+      {},
+    );
+    await waitFor(() => snap(T).state === 'open');
+    rt.sendMessage(T, `auth ${VAULT_SECRET}`);
+    await waitFor(() => snap(T).log.some((m) => m.type === 'receive'));
+    rt.disconnect(T);
+    const scrubbedUrl = at('/ws?h=5&key=«redacted»');
+    await until(async () => (await entriesFor(scrubbedUrl))[0]?.realtime?.durationMs != null);
+
+    const [e] = await entriesFor(scrubbedUrl);
+    const d = await detailOf(e!.id);
+    expect(d.spec.auth.token).toBe('«redacted»');
+    expect(d.spec.headers).toEqual([
+      { key: 'X-Api-Key', value: '{{apiKey}}', enabled: true },
+      { key: 'Cookie', value: '«redacted»', enabled: true },
+    ]);
+    expect(d.request.headers.Authorization).toBe('«redacted»');
+
+    const onDisk = [
+      readFileSync(join(DATA, 'requests-history.jsonl'), 'utf8'),
+      ...readdirSync(join(DATA, '.history-bodies')).map((f) => readFileSync(join(DATA, '.history-bodies', f), 'utf8')),
+    ].join('\n');
+    for (const secret of [VAULT_SECRET, 'literal-bearer-token-abc', 'literal-cookie-value']) {
+      expect(onDisk).not.toContain(secret);
+    }
+  });
+
+  test('an entry deleted mid-session stays deleted', async () => {
+    const T = 'hist-del';
+    const url = at('/ws?h=6');
+    rt.connect(T, { ...spec('ws', '/ws'), url }, {});
+    await until(async () => (await entriesFor(url)).length === 1);
+    const [e] = await entriesFor(url);
+    await hist.deleteEntry(e!.id);
+    rt.disconnect(T);
+    await Bun.sleep(200);
+    expect(await entriesFor(url)).toEqual([]);
+  });
+
+  test('loadTranscript shows a stored session in an idle tab, never over a live one', async () => {
+    const [e] = await entriesFor(at('/ws?h=1'));
+    const d = await detailOf(e!.id);
+
+    rt.loadTranscript('hist-view', d);
+    const s = snap('hist-view');
+    expect(s.state).toBe('idle');
+    expect(s.log[0]?.data).toStartWith('From history · session of');
+    expect(s.log.slice(1).map((m) => m.data)).toEqual(d.transcript.map((m) => m.data));
+    expect(s.stats).toEqual({ sent: 1, sentBytes: 5, received: 1, receivedBytes: 5 });
+
+    const L = 'hist-live';
+    rt.connect(L, spec('ws', '/ws'), {});
+    await waitFor(() => snap(L).state === 'open');
+    const before = snap(L).log;
+    rt.loadTranscript(L, d);
+    expect(snap(L).log).toBe(before);
+    rt.disconnect(L);
   });
 });

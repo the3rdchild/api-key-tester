@@ -139,7 +139,9 @@ export type WSEvent =
   | { type: 'matrix:started'; run: MatrixSummary }
   | { type: 'matrix:item'; runId: string; item: MatrixItem }
   | { type: 'matrix:done'; run: MatrixSummary }
-  | { type: 'req-history:appended'; entry: ReqHistoryEntry };
+  | { type: 'req-history:appended'; entry: ReqHistoryEntry }
+  /** a realtime session's entry, rewritten when the session ends */
+  | { type: 'req-history:updated'; entry: ReqHistoryEntry };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {
   untested: { label: 'Untested', color: 'gray' },

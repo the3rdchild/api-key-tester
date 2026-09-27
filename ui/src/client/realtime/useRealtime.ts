@@ -8,8 +8,10 @@
 
 import { useCallback, useSyncExternalStore } from 'react';
 
+import { isCleanClose } from '../../../../shared/collections.ts';
 import type {
   RealtimeClientFrame,
+  RealtimeHistoryDetail,
   RealtimeMessage,
   RealtimeMessageType,
   RealtimeServerFrame,
@@ -93,6 +95,9 @@ interface Session {
   opts: RTOptions;
   /** what the last connect() asked for; a reconnect repeats it */
   target?: { spec: RealtimeSpec; vars: Record<string, string> };
+  /** one per connect(), shared by its reconnects: the history keeps one entry
+   *  per session rather than one per attempt */
+  sessionId?: string;
   /** reconnects in a row that haven't reached open yet */
   attempt: number;
   reconnectTimer?: ReturnType<typeof setTimeout>;
@@ -179,12 +184,6 @@ function flush(s: Session): void {
     log: log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log,
   };
   emit(s);
-}
-
-/** A close the user or server meant (normal, going away, no status) is info;
- *  anything else — 1006 abnormal, 1011 server error, 4xxx app codes — is an error. */
-function cleanClose(code?: number): boolean {
-  return code == null || code === 1000 || code === 1001 || code === 1005;
 }
 
 // ─── timers ───────────────────────────────────────────────────────────────────
@@ -316,7 +315,7 @@ function handleFrame(tabId: string, f: RealtimeServerFrame): void {
     append(
       tabId,
       line(
-        cleanClose(f.code) ? 'info' : 'error',
+        isCleanClose(f.code) ? 'info' : 'error',
         `Closed${f.code != null ? ` · code ${f.code}` : ''}${f.reason ? ` · ${f.reason}` : ''}`,
       ),
     );
@@ -354,7 +353,9 @@ function openProxy(tabId: string, s: Session): void {
 
   socket.onopen = () => {
     const lastEventId = spec.kind === 'sse' ? s.lastEventId : undefined;
-    socket.send(JSON.stringify({ t: 'open', spec, vars, lastEventId } satisfies RealtimeClientFrame));
+    socket.send(
+      JSON.stringify({ t: 'open', spec, vars, lastEventId, sessionId: s.sessionId } satisfies RealtimeClientFrame),
+    );
   };
   socket.onmessage = (ev) => {
     if (sess(tabId).socket !== socket) return; // a superseded attempt
@@ -385,6 +386,7 @@ export function connect(tabId: string, spec: RealtimeSpec, vars: Record<string, 
   cancelReconnect(s);
   stopHeartbeat(s);
   s.target = { spec, vars };
+  s.sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   s.attempt = 0;
   // a fresh connect is a fresh stream, as with a new EventSource
   s.lastEventId = undefined;
@@ -422,7 +424,9 @@ export function setOptions(tabId: string, opts: RTOptions): void {
 function transmit(tabId: string, data: string, type: 'send' | 'heartbeat'): boolean {
   const s = sess(tabId);
   if (!s.socket || s.socket.readyState !== WebSocket.OPEN) return false;
-  s.socket.send(JSON.stringify({ t: 'send', data } satisfies RealtimeClientFrame));
+  s.socket.send(
+    JSON.stringify({ t: 'send', data, heartbeat: type === 'heartbeat' || undefined } satisfies RealtimeClientFrame),
+  );
   append(tabId, { id: uid(), type, at: Date.now(), data, size: encoder.encode(data).length }, 'sent');
   return true;
 }
@@ -466,6 +470,36 @@ export function disconnect(tabId: string): void {
     patch(tabId, { state: 'closed' });
     append(tabId, line('info', 'Disconnected'));
   }
+}
+
+/** Show a stored session from the history in an idle tab: its transcript,
+ *  counters and completion text. Connect starts a new session as usual. */
+export function loadTranscript(tabId: string, detail: RealtimeHistoryDetail): void {
+  const s = sess(tabId);
+  if (s.socket || s.snap.state !== 'idle') return; // never over a live session
+  const r = detail.entry.realtime;
+  s.stats = r
+    ? { sent: r.sent, sentBytes: r.sentBytes, received: r.received, receivedBytes: r.receivedBytes }
+    : { ...NO_STATS };
+  s.stream = {
+    ...NO_STREAM,
+    text: detail.streamText ?? '',
+    deltas: detail.transcript.filter((m) => m.delta).length,
+    done: detail.transcript.some((m) => m.type === 'receive' && m.data.trim() === '[DONE]'),
+  };
+  const when = new Date(detail.entry.ts).toLocaleString();
+  const log = [
+    line('info', `From history · session of ${when} — Connect starts a new one`),
+    ...detail.transcript.map((m) => ({ ...m, id: uid() })),
+  ];
+  s.pending = [];
+  s.snap = {
+    ...s.snap,
+    stats: { ...s.stats },
+    stream: { ...s.stream },
+    log: log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log,
+  };
+  emit(s);
 }
 
 /** Empties the log; the traffic counters keep counting the connection. */

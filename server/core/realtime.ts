@@ -14,6 +14,7 @@ import { chainLookups, fromRecord, interpolate, type VarLookup } from './vars.ts
 import { resolveVaultAuth } from './vault-auth.ts';
 import { activeEnvVars } from './collections.ts';
 import { extractDelta, extractTokens } from './stream.ts';
+import { beginAttempt, type SessionAttempt } from './realtime-history.ts';
 import type {
   RealtimeClientFrame,
   RealtimeServerFrame,
@@ -144,13 +145,21 @@ export interface RealtimeBridge {
   dispose(): void;
 }
 
-/** One bridge per browser control socket. `send` pushes a frame to that
- *  browser; the returned handle consumes frames coming up from it. */
-export function createBridge(send: Send): RealtimeBridge {
+/** One bridge per browser control socket. `toBrowser` pushes a frame to that
+ *  browser; the returned handle consumes frames coming up from it. Each
+ *  upstream attempt is also recorded in the request history. */
+export function createBridge(toBrowser: Send): RealtimeBridge {
   let ws: WebSocket | null = null;
   let abort: AbortController | null = null;
   let connectTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  let attempt: SessionAttempt | null = null;
+
+  // everything the browser is told about the attempt, the history hears too
+  const send: Send = (frame) => {
+    toBrowser(frame);
+    attempt?.server(frame);
+  };
 
   const clearTimer = () => {
     if (connectTimer) {
@@ -186,6 +195,9 @@ export function createBridge(send: Send): RealtimeBridge {
   };
 
   const teardown = () => {
+    // ended first: the close events that follow are ours, not news
+    attempt?.end();
+    attempt = null;
     clearTimer();
     try {
       ws?.close();
@@ -254,6 +266,7 @@ export function createBridge(send: Send): RealtimeBridge {
     send({
       t: 'status',
       state: 'open',
+      code: res.status,
       note: ct.includes('text/event-stream') ? undefined : `Server sent ${ct || 'no content-type'}, not text/event-stream — reading it as a stream anyway.`,
     });
     if (!res.body) {
@@ -327,6 +340,7 @@ export function createBridge(send: Send): RealtimeBridge {
         if (frame.spec.kind === 'sse' && frame.lastEventId && !hasHeader(conn.headers, 'Last-Event-ID')) {
           conn.headers['Last-Event-ID'] = frame.lastEventId;
         }
+        attempt = beginAttempt(frame.sessionId, frame.spec, conn.url, conn.headers);
         if (conn.note || conn.missing.length) {
           send({ t: 'status', state: 'connecting', note: conn.note, missing: conn.missing.length ? conn.missing : undefined });
         }
@@ -335,8 +349,10 @@ export function createBridge(send: Send): RealtimeBridge {
         return;
       }
       if (frame.t === 'send') {
-        if (ws && ws.readyState === ws.OPEN) ws.send(frame.data);
-        else send({ t: 'error', message: 'Not connected' });
+        if (ws && ws.readyState === ws.OPEN) {
+          ws.send(frame.data);
+          attempt?.client(frame.data, frame.heartbeat);
+        } else send({ t: 'error', message: 'Not connected' });
         return;
       }
       if (frame.t === 'close') teardown();

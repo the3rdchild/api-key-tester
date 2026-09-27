@@ -624,6 +624,7 @@ function HistoryRow({
     hour: '2-digit',
     minute: '2-digit',
   });
+  const rt = entry.realtime;
 
   return (
     <div className="group relative flex items-center gap-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -636,7 +637,11 @@ function HistoryRow({
         {/* The URL gets a line of its own: in a 288px sidebar, sharing it with
             the status and the time left room for about eight characters. */}
         <span className="flex items-baseline gap-2">
-          <span className="w-10 shrink-0 font-mono font-semibold text-slate-500">
+          <span
+            className={`w-10 shrink-0 font-mono font-semibold ${
+              entry.kind ? 'text-teal-600 dark:text-teal-400' : 'text-slate-500'
+            }`}
+          >
             {entry.method}
           </span>
           <span className="min-w-0 flex-1 truncate">{entry.url}</span>
@@ -645,6 +650,17 @@ function HistoryRow({
           {entry.pinned && <i className="fa-solid fa-thumbtack text-[8px] text-amber-500" />}
           <span>{time}</span>
           {entry.latencyMs != null && <span>· {entry.latencyMs} ms</span>}
+          {rt && (
+            <>
+              <span title={rt.attempts > 1 ? `${rt.attempts} connects (reconnected)` : undefined}>
+                · {rt.durationMs != null ? formatDuration(rt.durationMs) : <span className="text-emerald-600">open</span>}
+                {rt.attempts > 1 && <i className="fa-solid fa-rotate ml-1 text-[8px]" />}
+              </span>
+              <span className="font-mono" title="messages sent / received">
+                · ↑{rt.sent} ↓{rt.received}
+              </span>
+            </>
+          )}
           {entry.checks && (
             <span
               className={`font-mono ${
@@ -699,6 +715,16 @@ function HistoryRow({
       </span>
     </div>
   );
+}
+
+/** "850 ms", "42 s", "3 m 07 s", "1 h 04 m" — how long a realtime session ran. */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} m ${String(s % 60).padStart(2, '0')} s`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} m`;
 }
 
 function PanelHeader({

@@ -5,6 +5,7 @@ import type {
   EnvironmentDef,
   HistoryDetail,
   OAuth2Config,
+  RealtimeHistoryDetail,
   ReqHistoryEntry,
   RequestSpec,
   SendResult,
@@ -119,6 +120,9 @@ export const clientApi = {
 
   historyDetail: (id: string) =>
     fetch(`${BASE}/history/${id}`).then((r) => json<HistoryDetail>(r)),
+  /** the same endpoint, for an entry whose `kind` says it was a WS/SSE session */
+  realtimeHistoryDetail: (id: string) =>
+    fetch(`${BASE}/history/${id}`).then((r) => json<RealtimeHistoryDetail>(r)),
 
   pinHistory: (id: string, pinned: boolean) =>
     fetch(`${BASE}/history/${id}/pin`, {

@@ -356,6 +356,35 @@ export interface ReqHistoryEntry {
   checks?: { passed: number; total: number };
   /** pinned entries are never evicted when the log is trimmed */
   pinned?: boolean;
+  /** set for a WebSocket / SSE session; absent for an HTTP request */
+  kind?: RealtimeKind;
+  realtime?: RealtimeSummary;
+}
+
+/** What a realtime session amounted to. Written when it connects (or fails
+ *  to) and rewritten when it ends. */
+export interface RealtimeSummary {
+  /** absent while the session is still open */
+  durationMs?: number;
+  sent: number;
+  sentBytes: number;
+  received: number;
+  receivedBytes: number;
+  closeCode?: number;
+  closeReason?: string;
+  /** connects in this session — more than one means it reconnected */
+  attempts: number;
+}
+
+/** A realtime history entry's stored session: the spec to reopen it with and
+ *  the tail of what went back and forth. Secrets redacted, like HTTP. */
+export interface RealtimeHistoryDetail {
+  entry: ReqHistoryEntry;
+  spec: RealtimeSpec;
+  request: { url: string; headers: Record<string, string> };
+  transcript: RealtimeMessage[];
+  /** sse: the LLM completion stitched from its deltas */
+  streamText?: string;
 }
 
 /** A history entry with the response body kept alongside it. */
@@ -441,6 +470,12 @@ export function emptyRealtime(id: string, kind: RealtimeKind = 'ws'): RealtimeSp
  */
 export type RealtimeMessageType = 'send' | 'receive' | 'info' | 'error' | 'heartbeat';
 
+/** A close that was meant — normal, going away, no status given — as opposed
+ *  to 1006 abnormal, 1011 server error or an app's own 4xxx code. */
+export function isCleanClose(code?: number): boolean {
+  return code == null || code === 1000 || code === 1001 || code === 1005;
+}
+
 /** One line in a realtime session log. */
 export interface RealtimeMessage {
   id: string;
@@ -470,8 +505,11 @@ export type RealtimeClientFrame =
       vars?: Record<string, string>;
       /** sse reconnect: the last event id seen, sent as Last-Event-ID */
       lastEventId?: string;
+      /** one per Connect click, reused by its reconnects — history keeps one
+       *  entry per session, not one per attempt */
+      sessionId?: string;
     }
-  | { t: 'send'; data: string }
+  | { t: 'send'; data: string; heartbeat?: boolean }
   | { t: 'close' };
 
 /** Frames the server pushes back down the proxy socket. */

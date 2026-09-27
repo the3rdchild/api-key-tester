@@ -15,6 +15,10 @@ import { nanoid } from 'nanoid';
 import { ROOT_DIR, getAllKeys } from './store.ts';
 import type {
   HistoryDetail,
+  RealtimeHistoryDetail,
+  RealtimeMessage,
+  RealtimeSpec,
+  RealtimeSummary,
   ReqHistoryEntry,
   RequestSpec,
   SendResult,
@@ -47,6 +51,16 @@ const SENSITIVE_HEADERS = new Set([
 ]);
 
 const REDACTED = '«redacted»';
+
+// Every change to the log file goes through here, one at a time. Pinning,
+// deleting and rewriting a realtime session's entry read the whole file and
+// write it back; a request appended in between would otherwise be lost.
+let queue: Promise<unknown> = Promise.resolve();
+function locked<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => {});
+  return run;
+}
 
 /** Credential fields that are actually secret. A vault entry also stores
  *  baseURL, model and friends - scrubbing those turned "api.deepseek.com/models"
@@ -130,9 +144,11 @@ export async function record(
     checks: countChecks(result),
   };
 
-  await appendFile(REQ_HISTORY_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
-  await storeDetail(entry, spec, sentHeaders, sentBody, result, secrets, sentUrl);
-  await trim();
+  await locked(async () => {
+    await appendFile(REQ_HISTORY_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
+    await storeDetail(entry, spec, sentHeaders, sentBody, result, secrets, sentUrl);
+    await trim();
+  });
   return entry;
 }
 
@@ -197,14 +213,124 @@ export async function redactedDetail(
   return redactDetail(spec, sentHeaders, sentBody, result, await secretValues(), sentUrl);
 }
 
-export async function getHistoryDetail(id: string): Promise<HistoryDetail | null> {
+/** An HTTP entry's request + response, or a realtime entry's session. */
+export async function getHistoryDetail(id: string): Promise<HistoryDetail | RealtimeHistoryDetail | null> {
   const path = resolve(RESPONSE_DIR, `${id}.json`);
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as HistoryDetail;
+    return JSON.parse(await readFile(path, 'utf8')) as HistoryDetail | RealtimeHistoryDetail;
   } catch {
     return null;
   }
+}
+
+// ─── realtime sessions ──────────────────────────────────────────────────────
+
+/** A realtime session as the recorder hands it over (realtime-history.ts). */
+export interface RealtimeRecord {
+  spec: RealtimeSpec;
+  /** the resolved URL and headers, as they went out */
+  url: string;
+  headers: Record<string, string>;
+  startedAt: number;
+  status?: number;
+  error?: string;
+  summary: RealtimeSummary;
+  /** already capped by the recorder; scrubbed here */
+  transcript: RealtimeMessage[];
+  streamText?: string;
+}
+
+/** A {{var}} in an auth field names a secret without being one, so it stays
+ *  (that's what makes the reopened session usable). A literal is the secret
+ *  itself, and never reaches the disk. */
+function guardSecret(value: string | undefined, secrets: string[]): string | undefined {
+  if (!value) return value;
+  return /\{\{[^}]+\}\}/.test(value) ? scrub(value, secrets) : REDACTED;
+}
+
+function redactSpec(spec: RealtimeSpec, secrets: string[]): RealtimeSpec {
+  const auth = {
+    ...spec.auth,
+    token: guardSecret(spec.auth.token, secrets),
+    password: guardSecret(spec.auth.password, secrets),
+    headerValue: guardSecret(spec.auth.headerValue, secrets),
+  };
+  if (auth.oauth2) {
+    auth.oauth2 = {
+      ...auth.oauth2,
+      clientSecret: guardSecret(auth.oauth2.clientSecret, secrets),
+      password: guardSecret(auth.oauth2.password, secrets),
+      refreshToken: guardSecret(auth.oauth2.refreshToken, secrets),
+    };
+  }
+  return {
+    ...spec,
+    url: scrub(spec.url, secrets),
+    headers: spec.headers.map((h) => ({
+      ...h,
+      value: SENSITIVE_HEADERS.has(h.key.trim().toLowerCase())
+        ? (guardSecret(h.value, secrets) ?? '')
+        : scrub(h.value, secrets),
+    })),
+    auth,
+    draft: undefined,
+    heartbeat: spec.heartbeat && { ...spec.heartbeat, payload: scrub(spec.heartbeat.payload, secrets) },
+  };
+}
+
+function realtimeEntry(id: string, r: RealtimeRecord, secrets: string[]): ReqHistoryEntry {
+  return {
+    id,
+    // grouped under the day the session started, however long it ran
+    ts: new Date(r.startedAt).toISOString(),
+    name: r.spec.name || undefined,
+    method: r.spec.kind === 'sse' ? 'SSE' : 'WS',
+    url: scrub(r.url || r.spec.url, secrets),
+    status: r.status,
+    error: r.error,
+    request: { headers: maskHeaders(r.headers, secrets) },
+    kind: r.spec.kind,
+    realtime: r.summary,
+  };
+}
+
+async function storeRealtimeDetail(entry: ReqHistoryEntry, r: RealtimeRecord, secrets: string[]): Promise<void> {
+  try {
+    await mkdir(RESPONSE_DIR, { recursive: true });
+    const detail: RealtimeHistoryDetail = {
+      entry,
+      spec: redactSpec(r.spec, secrets),
+      request: { url: entry.url, headers: entry.request.headers },
+      transcript: r.transcript.map((m) => ({ ...m, data: scrub(m.data, secrets) })),
+      streamText: r.streamText ? scrub(r.streamText, secrets) : undefined,
+    };
+    await writeFile(resolve(RESPONSE_DIR, `${entry.id}.json`), JSON.stringify(detail), 'utf8');
+  } catch (e) {
+    console.warn('[history] could not store the realtime session:', e);
+  }
+}
+
+/** First write of a session: when it connects, or fails to. */
+export async function recordRealtime(r: RealtimeRecord): Promise<ReqHistoryEntry> {
+  const secrets = await secretValues();
+  const entry = realtimeEntry(nanoid(12), r, secrets);
+  await locked(async () => {
+    await appendFile(REQ_HISTORY_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
+    await storeRealtimeDetail(entry, r, secrets);
+    await trim();
+  });
+  return entry;
+}
+
+/** Rewrite a session's entry in place (keeping its pin). Null when the entry
+ *  is gone — deleted or cleared while the session ran — and stays gone. */
+export async function updateRealtime(id: string, r: RealtimeRecord): Promise<ReqHistoryEntry | null> {
+  const secrets = await secretValues();
+  const next = realtimeEntry(id, r, secrets);
+  const updated = await rewrite(id, (old) => ({ ...next, pinned: old.pinned }));
+  if (updated) await storeRealtimeDetail(updated, r, secrets);
+  return updated;
 }
 
 function countChecks(result: SendResult): { passed: number; total: number } | undefined {
@@ -258,6 +384,13 @@ async function trim(): Promise<void> {
 
 /** Rewrite the log with one entry changed or removed. */
 async function rewrite(
+  id: string,
+  change: (entry: ReqHistoryEntry) => ReqHistoryEntry | null,
+): Promise<ReqHistoryEntry | null> {
+  return locked(() => rewriteNow(id, change));
+}
+
+async function rewriteNow(
   id: string,
   change: (entry: ReqHistoryEntry) => ReqHistoryEntry | null,
 ): Promise<ReqHistoryEntry | null> {
@@ -318,6 +451,8 @@ export async function listHistory(limit = MAX_ENTRIES): Promise<ReqHistoryEntry[
 }
 
 export async function clearHistory(): Promise<void> {
-  await writeFile(REQ_HISTORY_PATH, '', 'utf8');
-  await rm(RESPONSE_DIR, { recursive: true, force: true });
+  await locked(async () => {
+    await writeFile(REQ_HISTORY_PATH, '', 'utf8');
+    await rm(RESPONSE_DIR, { recursive: true, force: true });
+  });
 }

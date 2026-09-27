@@ -12,7 +12,7 @@ import { api } from '../lib/api.ts';
 import { trackLive } from '../lib/liveStatus.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import { emptyRealtime, emptyRequest } from '../../../shared/collections.ts';
-import { destroySession } from './realtime/useRealtime.ts';
+import { destroySession, loadTranscript } from './realtime/useRealtime.ts';
 import type {
   CollectionsFile,
   RealtimeKind,
@@ -167,6 +167,17 @@ export function useClient() {
     (async () => {
       for (const tab of tabs) {
         if (!tab.historyId || tab.result) continue;
+        if (tab.kind !== 'http') {
+          // a realtime tab opened from history gets its transcript back
+          try {
+            const detail = await clientApi.realtimeHistoryDetail(tab.historyId);
+            if (cancelled) return;
+            loadTranscript(tab.id, detail);
+          } catch {
+            /* entry evicted */
+          }
+          continue;
+        }
         try {
           const detail = await clientApi.historyDetail(tab.historyId);
           if (cancelled) return;
@@ -236,6 +247,10 @@ export function useClient() {
           }
           if (msg.type === 'req-history:appended' && msg.entry) {
             setHistory((prev) => [msg.entry!, ...prev].slice(0, 200));
+          }
+          // a realtime session's entry, rewritten when it ends
+          if (msg.type === 'req-history:updated' && msg.entry) {
+            setHistory((prev) => prev.map((e) => (e.id === msg.entry!.id ? msg.entry! : e)));
           }
         } catch {
           /* ignore */
@@ -333,6 +348,24 @@ export function useClient() {
    *  send "«redacted»" as the token. */
   const openFromHistory = useCallback(
     async (entry: ReqHistoryEntry) => {
+      if (entry.kind) {
+        // A WS/SSE session reopens as a realtime tab showing its transcript;
+        // the URL stands in until the stored spec (with its {{vars}}) arrives.
+        const tab: Tab = { ...freshRealtimeTab(entry.kind), historyId: entry.id };
+        tab.rt = { ...tab.rt!, name: entry.name ?? '', url: entry.url };
+        setTabs((prev) => [...prev, tab]);
+        setActiveId(tab.id);
+        try {
+          const detail = await clientApi.realtimeHistoryDetail(entry.id);
+          setTabs((prev) =>
+            prev.map((t) => (t.id === tab.id ? { ...t, rt: { ...detail.spec, id: t.rt!.id, draft: '' } } : t)),
+          );
+          loadTranscript(tab.id, detail);
+        } catch {
+          // no stored session (evicted); the URL alone still reopens it
+        }
+        return;
+      }
       const saved = entry.requestId ? collections?.requests[entry.requestId] : undefined;
       const tab: Tab = {
         ...freshTab(),

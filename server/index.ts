@@ -30,6 +30,7 @@ import { setRunEmitter } from './core/collection-runner.ts';
 import { setMatrixEmitter } from './core/matrix.ts';
 import { runAll, type RunAllOptions } from './core/runner.ts';
 import { createBridge, type RealtimeBridge } from './core/realtime.ts';
+import { setRealtimeHistoryEmitter } from './core/realtime-history.ts';
 import type { WSEvent } from '../shared/types.ts';
 import type { RealtimeClientFrame, RealtimeServerFrame } from '../shared/collections.ts';
 
@@ -104,6 +105,11 @@ setTokenChangeEmitter((tokenId) => broadcast({ type: 'oauth:token', tokenId }));
 
 // Runner progress: one event per request, so a long run stays legible while
 // it is still going.
+// A WS/SSE session lands in the request history like a send does.
+setRealtimeHistoryEmitter((event) =>
+  broadcast({ type: event.type === 'appended' ? 'req-history:appended' : 'req-history:updated', entry: event.entry }),
+);
+
 setMatrixEmitter((event) => {
   if (event.type === 'started') broadcast({ type: 'matrix:started', run: event.run });
   else if (event.type === 'item') broadcast({ type: 'matrix:item', runId: event.runId, item: event.item });
