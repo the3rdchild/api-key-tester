@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyEntry, WSEvent } from '../../../shared/types.ts';
 import { api } from './api.ts';
+import { trackLive } from './liveStatus.ts';
 
 export function useStore() {
   const [keys, setKeys] = useState<KeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
 
@@ -29,11 +29,10 @@ export function useStore() {
     const connect = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/live`);
+      trackLive(ws);
       wsRef.current = ws;
 
-      ws.onopen = () => setWsConnected(true);
       ws.onclose = () => {
-        setWsConnected(false);
         reconnectTimer.current = window.setTimeout(connect, 1500);
       };
       ws.onerror = () => ws.close();
@@ -73,5 +72,5 @@ export function useStore() {
     };
   }, [refresh]);
 
-  return { keys, loading, error, refresh, wsConnected };
+  return { keys, loading, error, refresh };
 }

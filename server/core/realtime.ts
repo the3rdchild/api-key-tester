@@ -283,13 +283,17 @@ export function createBridge(send: Send): RealtimeBridge {
           const comments: string[] = [];
           let eventName = '';
           let eventId: string | undefined;
+          let retry: number | undefined;
           for (const line of rawEvent.split(/\r?\n/)) {
             if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
             else if (line.startsWith('event:')) eventName = line.slice(6).trim();
             else if (line.startsWith('id:')) eventId = line.slice(3).replace(/^ /, '');
+            else if (line.startsWith('retry:') && /^\d+$/.test(line.slice(6).trim())) retry = Number(line.slice(6).trim());
             else if (line.startsWith(':')) comments.push(line.slice(1).replace(/^ /, ''));
           }
           if (disposed) continue;
+          // the server's own reconnect delay; the client's auto-reconnect honours it
+          if (retry != null) send({ t: 'retry', ms: retry });
           const at = Date.now();
           const size = Buffer.byteLength(rawEvent);
           if (dataLines.length) {
@@ -318,6 +322,11 @@ export function createBridge(send: Send): RealtimeBridge {
         const vars = { ...(await activeEnvVars()), ...(frame.vars ?? {}) };
         const conn = await buildRealtimeConnection(frame.spec, vars);
         if (disposed) return;
+        // An SSE reconnect resumes where the stream left off, as EventSource
+        // does — unless the user set the header by hand.
+        if (frame.spec.kind === 'sse' && frame.lastEventId && !hasHeader(conn.headers, 'Last-Event-ID')) {
+          conn.headers['Last-Event-ID'] = frame.lastEventId;
+        }
         if (conn.note || conn.missing.length) {
           send({ t: 'status', state: 'connecting', note: conn.note, missing: conn.missing.length ? conn.missing : undefined });
         }

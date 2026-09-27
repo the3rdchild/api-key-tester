@@ -47,6 +47,19 @@ const STREAMS: Record<string, string[]> = {
 };
 
 const enc = new TextEncoder();
+function eventStream(chunks: string[]): Response {
+  const body = new ReadableStream({
+    async start(c) {
+      for (const ch of chunks) {
+        c.enqueue(enc.encode(ch));
+        await Bun.sleep(5);
+      }
+      c.close();
+    },
+  });
+  return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+}
+
 const upstream = Bun.serve({
   port: 0,
   hostname: '127.0.0.1',
@@ -54,17 +67,11 @@ const upstream = Bun.serve({
     const { pathname } = new URL(req.url);
     if (pathname === '/ws') return srv.upgrade(req) ? undefined : new Response('no', { status: 400 });
     const chunks = STREAMS[pathname];
-    if (chunks) {
-      const body = new ReadableStream({
-        async start(c) {
-          for (const ch of chunks) {
-            c.enqueue(enc.encode(ch));
-            await Bun.sleep(5);
-          }
-          c.close();
-        },
-      });
-      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    if (chunks) return eventStream(chunks);
+    // first visit sets retry: and an id; a reconnect proves it sent Last-Event-ID
+    if (pathname === '/resume') {
+      const last = req.headers.get('last-event-id');
+      return eventStream(last ? [`data: resumed after ${last}\n\n`] : ['retry: 150\n\n', 'id: 41\ndata: first\n\n']);
     }
     if (pathname === '/plain') return new Response('data: x\n\n', { headers: { 'content-type': 'text/plain' } });
     return new Response('nope', { status: 404, statusText: 'Not Found' });
@@ -75,6 +82,7 @@ const upstream = Bun.serve({
       if (s === 'big') ws.send('x'.repeat(600 * 1024));
       else if (s === 'bin') ws.send(new Uint8Array([1, 2, 3, 4]));
       else if (s === 'bye') ws.close(4000, 'app says bye');
+      else if (s === 'bye1000') ws.close(1000, 'done');
       else if (s === 'flood') for (let i = 0; i < 2500; i++) ws.send(`f${i}`);
       else ws.send(msg);
     },
@@ -254,6 +262,7 @@ describe('sse', () => {
       { type: 'heartbeat', data: 'keep-alive', event: undefined, eventId: undefined },
       { type: 'receive', data: '{"hi":1}', event: 'greet', eventId: '7' },
       { type: 'receive', data: 'line1\nline2', event: undefined, eventId: undefined },
+      { type: 'info', data: 'Server asks for 1 s between reconnects (retry:)', event: undefined, eventId: undefined },
       { type: 'receive', data: 'over crlf', event: 'crlf', eventId: undefined },
       { type: 'receive', data: 'split across chunks', event: undefined, eventId: undefined },
       { type: 'info', data: 'Closed · stream ended', event: undefined, eventId: undefined },
@@ -333,5 +342,120 @@ describe('undefined variables', () => {
     rt.connect(T, { ...spec('ws', '/ws'), url: `ws://127.0.0.1:${upstream.port}/ws?t={{nope_not_defined}}` }, {});
     await waitFor(() => snap(T).log.some((m) => m.type === 'error' && m.data.startsWith('Undefined')));
     rt.disconnect(T);
+  });
+});
+
+// ─── auto-reconnect ─────────────────────────────────────────────────────────
+
+const count = (tab: string, pred: (m: { type: string; data: string }) => boolean) => snap(tab).log.filter(pred).length;
+
+async function openWs(tab: string, opts: Parameters<typeof rt.setOptions>[1]) {
+  rt.setOptions(tab, opts);
+  rt.connect(tab, spec('ws', '/ws'), {});
+  await waitFor(() => snap(tab).state === 'open');
+}
+
+describe('auto-reconnect', () => {
+  test('ws: an unexpected close backs off, comes back, keeps the counters', async () => {
+    const T = 'rc-ws';
+    await openWs(T, { autoReconnect: true });
+    rt.sendMessage(T, 'bye');
+    await waitFor(() => snap(T).state === 'reconnecting');
+    expect(snap(T).log.at(-1)).toMatchObject({ type: 'info', data: 'Reconnecting in 1 s · attempt 1/10' });
+    await waitFor(() => snap(T).state === 'open', 3000);
+    expect(count(T, (m) => m.data === 'Connected')).toBe(2);
+    expect(snap(T).stats.sent).toBe(1);
+    rt.disconnect(T);
+  });
+
+  test('ws: a normal close (1000) is left closed', async () => {
+    const T = 'rc-1000';
+    await openWs(T, { autoReconnect: true });
+    rt.sendMessage(T, 'bye1000');
+    await waitFor(() => snap(T).state === 'closed');
+    expect(snap(T).log.at(-1)).toMatchObject({ data: 'Not reconnecting: the server closed normally (1000)' });
+  });
+
+  test('disconnect cancels a pending reconnect', async () => {
+    const T = 'rc-cancel';
+    await openWs(T, { autoReconnect: true });
+    rt.sendMessage(T, 'bye');
+    await waitFor(() => snap(T).state === 'reconnecting');
+    rt.disconnect(T);
+    expect(snap(T).state).toBe('closed');
+    await Bun.sleep(1300);
+    expect(snap(T).state).toBe('closed');
+    expect(count(T, (m) => m.data === 'Connected')).toBe(1);
+  });
+
+  test('turning auto-reconnect off mid-backoff stops it', async () => {
+    const T = 'rc-off';
+    await openWs(T, { autoReconnect: true });
+    rt.sendMessage(T, 'bye');
+    await waitFor(() => snap(T).state === 'reconnecting');
+    rt.setOptions(T, { autoReconnect: false });
+    await Bun.sleep(1300);
+    expect(snap(T).state).toBe('closed');
+    expect(count(T, (m) => m.data === 'Auto-reconnect turned off — stopped retrying')).toBe(1);
+  });
+
+  test('sse: waits the server retry:, resumes with Last-Event-ID', async () => {
+    const T = 'rc-sse';
+    rt.setOptions(T, { autoReconnect: true });
+    rt.connect(T, spec('sse', '/resume'), {});
+    await waitFor(() => snap(T).log.some((m) => m.data === 'resumed after 41'), 3000);
+    const lines = snap(T).log.map((m) => m.data);
+    expect(lines).toContain('Server asks for 150 ms between reconnects (retry:)');
+    expect(lines).toContain('Reconnecting in 150 ms · attempt 1/10 · Last-Event-ID 41');
+    rt.disconnect(T);
+  });
+
+  test('sse: a 4xx is not retried', async () => {
+    const T = 'rc-404';
+    rt.setOptions(T, { autoReconnect: true });
+    rt.connect(T, spec('sse', '/missing'), {});
+    await waitFor(() => snap(T).state === 'error');
+    expect(snap(T).log.at(-1)).toMatchObject({ data: "Not reconnecting: HTTP 404 won't change on a retry" });
+  });
+
+  test('sse: a finished completion is not requested again', async () => {
+    const T = 'rc-llm';
+    rt.setOptions(T, { autoReconnect: true });
+    const s = await streamToEnd(T, '/openai');
+    expect(s.log.at(-1)).toMatchObject({ data: 'Not reconnecting: the stream delivered a completion' });
+  });
+});
+
+// ─── heartbeat ──────────────────────────────────────────────────────────────
+
+describe('heartbeat', () => {
+  const beats = (tab: string) => count(tab, (m) => m.type === 'heartbeat');
+
+  test('sends the payload on its interval, as heartbeat, outside the composer history', async () => {
+    const T = 'hb';
+    await openWs(T, { autoReconnect: false, heartbeat: { intervalMs: 50, payload: 'ping!' } });
+    await waitFor(() => beats(T) >= 3);
+    const s = snap(T);
+    expect(s.log.find((m) => m.type === 'heartbeat')).toMatchObject({ data: 'ping!', size: 5 });
+    expect(s.stats.sent).toBeGreaterThanOrEqual(3);
+    expect(s.log.some((m) => m.type === 'receive' && m.data === 'ping!')).toBe(true); // the echo
+    expect(rt.sentHistory(T)).toEqual([]);
+  });
+
+  test('turning it off stops it; so does disconnecting', async () => {
+    const T = 'hb';
+    rt.setOptions(T, { autoReconnect: false });
+    await Bun.sleep(80);
+    const off = beats(T);
+    await Bun.sleep(200);
+    expect(beats(T)).toBe(off);
+
+    const D = 'hb-disc';
+    await openWs(D, { autoReconnect: false, heartbeat: { intervalMs: 50, payload: 'p' } });
+    rt.disconnect(D);
+    await Bun.sleep(80);
+    const after = beats(D);
+    await Bun.sleep(200);
+    expect(beats(D)).toBe(after);
   });
 });

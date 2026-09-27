@@ -12,7 +12,7 @@ import { DetailsModal } from './DetailsModal.tsx';
  *  Its old built-in request testers are gone: the API client does that job
  *  better, so the row action hands the key over to it instead. */
 export function VaultView({ onTryInClient }: { onTryInClient: (entry: KeyEntry) => void }) {
-  const { keys, loading, error, refresh, wsConnected } = useStore();
+  const { keys, loading, error, refresh } = useStore();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [editing, setEditing] = useState<KeyEntry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -169,13 +169,6 @@ export function VaultView({ onTryInClient }: { onTryInClient: (entry: KeyEntry) 
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold"><i className="fa-solid fa-key" /> Key vault</h1>
-          <span
-            className={`inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-emerald-600' : 'text-slate-400'}`}
-            title={wsConnected ? 'WebSocket connected - live updates' : 'WebSocket disconnected'}
-          >
-            <span className={`inline-block h-2 w-2 rounded-full ${wsConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-            {wsConnected ? 'live' : 'offline'}
-          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

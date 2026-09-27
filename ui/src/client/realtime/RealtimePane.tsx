@@ -13,14 +13,22 @@ import { LogRow } from './LogRow.tsx';
 import { LogToolbar } from './LogToolbar.tsx';
 import { compactDeltas, countByType, countEvents, filterLog, type LogEntry, type LogFilter } from './logView.ts';
 import { StreamText } from './StreamText.tsx';
-import { clearLog, connect, disconnect, sendMessage, useRealtime, type RTSnapshot } from './useRealtime.ts';
+import {
+  clearLog,
+  connect,
+  disconnect,
+  sendMessage,
+  setOptions,
+  useRealtime,
+  type RTSnapshot,
+} from './useRealtime.ts';
 import { formatBytes } from '../../lib/format.ts';
 import { loadLocal, saveLocal } from '../../lib/storage.ts';
-import type { RealtimeSpec } from '../../../../shared/collections.ts';
+import type { RealtimeHeartbeat, RealtimeSpec } from '../../../../shared/collections.ts';
 import type { KeyEntry } from '../../../../shared/types.ts';
 import type { Tab } from '../useClient.ts';
 
-type Section = 'headers' | 'auth' | 'protocols';
+type Section = 'headers' | 'auth' | 'protocols' | 'options';
 
 interface Props {
   tab: Tab;
@@ -32,6 +40,7 @@ interface Props {
 const STATE_STYLE: Record<string, string> = {
   idle: 'text-slate-400',
   connecting: 'text-amber-500',
+  reconnecting: 'text-amber-500',
   open: 'text-emerald-600 dark:text-emerald-400',
   closed: 'text-slate-500',
   error: 'text-red-600 dark:text-red-400',
@@ -39,6 +48,7 @@ const STATE_STYLE: Record<string, string> = {
 
 const PRETTY_KEY = 'realtime.pretty';
 const COMPACT_KEY = 'realtime.compact';
+const HEARTBEAT_DEFAULT: RealtimeHeartbeat = { enabled: false, intervalSec: 30, payload: '{"type":"ping"}' };
 
 export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
   const rt = tab.rt!;
@@ -46,7 +56,19 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
   const snap = useRealtime(tab.id);
   const [section, setSection] = useState<Section>('headers');
 
-  const busy = snap.state === 'open' || snap.state === 'connecting';
+  const busy = snap.state === 'open' || snap.state === 'connecting' || snap.state === 'reconnecting';
+
+  // The session outlives this pane, so hand it the options as they change —
+  // turning auto-reconnect off mid-backoff, or retiming the heartbeat, applies
+  // to the live connection.
+  const hb = rt.heartbeat;
+  useEffect(() => {
+    setOptions(tab.id, {
+      autoReconnect: !!rt.autoReconnect,
+      heartbeat:
+        isWs && hb?.enabled && hb.intervalSec > 0 ? { intervalMs: hb.intervalSec * 1000, payload: hb.payload } : undefined,
+    });
+  }, [tab.id, isWs, rt.autoReconnect, hb?.enabled, hb?.intervalSec, hb?.payload]);
 
   const toggle = () => {
     if (busy) {
@@ -156,7 +178,7 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
     apply();
   };
 
-  const sections: Section[] = isWs ? ['headers', 'auth', 'protocols'] : ['headers', 'auth'];
+  const sections: Section[] = isWs ? ['headers', 'auth', 'protocols', 'options'] : ['headers', 'auth', 'options'];
 
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Realtime connection">
@@ -189,6 +211,10 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
           {snap.state === 'connecting' ? (
             <>
               <i className="fa-solid fa-spinner fa-spin" /> Connecting
+            </>
+          ) : snap.state === 'reconnecting' ? (
+            <>
+              <i className="fa-solid fa-rotate fa-spin" /> Cancel
             </>
           ) : busy ? (
             <>
@@ -272,6 +298,7 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
             <p className="text-xs text-slate-400">Comma-separated. Offered to the server on connect.</p>
           </div>
         )}
+        {section === 'options' && <OptionsPanel rt={rt} isWs={isWs} onRt={onRt} />}
       </div>
 
       {!isWs && (
@@ -414,6 +441,80 @@ function TrafficStats({ snap, isWs }: { snap: RTSnapshot; isWs: boolean }) {
         ↓ {stats.received} · {formatBytes(stats.receivedBytes)}
       </span>
     </span>
+  );
+}
+
+function OptionsPanel({
+  rt,
+  isWs,
+  onRt,
+}: {
+  rt: RealtimeSpec;
+  isWs: boolean;
+  onRt: (patch: Partial<RealtimeSpec>) => void;
+}) {
+  const hb = { ...HEARTBEAT_DEFAULT, ...rt.heartbeat };
+  const setHb = (patch: Partial<RealtimeHeartbeat>) => onRt({ heartbeat: { ...hb, ...patch } });
+  const input = 'h-7 rounded border border-slate-300 bg-white px-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800';
+
+  return (
+    <div className="grid max-w-lg gap-4 text-sm">
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={!!rt.autoReconnect}
+          onChange={(e) => onRt({ autoReconnect: e.target.checked })}
+          className="mt-1 accent-indigo-600"
+        />
+        <span>
+          <span className="font-medium">Auto-reconnect</span>
+          <span className="block text-xs text-slate-400">
+            {isWs
+              ? 'Retries a dropped connection, waiting 1 s, 2 s, 4 s … up to 30 s, 10 times in a row. A normal close (1000) is left closed.'
+              : "Retries a dropped stream like EventSource: resumes with Last-Event-ID and waits the server's retry: when it sent one. Not after a 4xx, and not once a completion has come through."}
+          </span>
+        </span>
+      </label>
+
+      {isWs && (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={hb.enabled}
+                onChange={(e) => setHb({ enabled: e.target.checked })}
+                className="accent-indigo-600"
+              />
+              <span className="font-medium">Heartbeat</span>
+            </label>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              every
+              <input
+                type="number"
+                min={1}
+                value={hb.intervalSec}
+                onChange={(e) => setHb({ intervalSec: Math.max(0, Number(e.target.value) || 0) })}
+                className={`${input} w-16`}
+              />
+              s
+            </label>
+          </div>
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-500">Payload</span>
+            <input
+              value={hb.payload}
+              placeholder={HEARTBEAT_DEFAULT.payload}
+              onChange={(e) => setHb({ payload: e.target.value })}
+              className={`${input} w-full`}
+            />
+          </label>
+          <p className="text-xs text-slate-400">
+            Sent as an ordinary frame while connected and logged under Heartbeat, so the filter can hide it.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

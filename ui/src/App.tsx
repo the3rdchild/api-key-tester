@@ -9,6 +9,7 @@ import { RunnerView } from './client/RunnerView.tsx';
 import { isTypingTarget } from './client/shortcuts.ts';
 import { ShortcutsDialog } from './client/ShortcutsDialog.tsx';
 import { VaultView } from './components/VaultView.tsx';
+import { useLiveConnected } from './lib/liveStatus.ts';
 import { loadLocal, saveLocal } from './lib/storage.ts';
 import { useTheme, type Theme } from './lib/theme.ts';
 
@@ -84,12 +85,13 @@ export default function App() {
           Vault
         </ScreenTab>
 
+        <LiveIndicator />
         <button
           type="button"
           onClick={() => setShortcutsOpen(true)}
           title="Keyboard shortcuts (?)"
           aria-label="Keyboard shortcuts"
-          className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
+          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800"
         >
           <i className="fa-solid fa-keyboard" />
           <span className="hidden sm:inline">Shortcuts</span>
@@ -119,6 +121,24 @@ const THEME_META: Record<Theme, { icon: string; label: string; next: string }> =
   dark: { icon: 'fa-moon', label: 'Dark', next: 'system' },
   system: { icon: 'fa-circle-half-stroke', label: 'System', next: 'light' },
 };
+
+/** Whether the /live push socket is up — saved-collection edits from another
+ *  window, OAuth tokens, streamed chunks and runner progress arrive over it. */
+function LiveIndicator() {
+  const live = useLiveConnected();
+  return (
+    <span
+      role="status"
+      title={live ? 'Live updates connected' : 'Live updates disconnected — reconnecting'}
+      className={`ml-auto mr-1 flex items-center gap-1.5 px-2 text-xs ${
+        live ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+      {live ? 'live' : 'offline'}
+    </span>
+  );
+}
 
 function ThemeToggle({ theme, onCycle }: { theme: Theme; onCycle: () => void }) {
   const meta = THEME_META[theme];

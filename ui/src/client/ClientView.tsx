@@ -362,23 +362,6 @@ export function ClientView({
               <i className="fa-solid fa-tower-broadcast text-xs" /> SSE
             </button>
           </div>
-
-          <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
-            <button
-              type="button"
-              onClick={() => onShowShortcuts?.()}
-              title="All keyboard shortcuts (?)"
-              className="rounded px-1.5 py-0.5 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-            >
-              <i className="fa-solid fa-keyboard" /> shortcuts
-            </button>
-            <span
-              className={state.wsConnected ? 'text-emerald-600' : 'text-slate-400'}
-              title={state.wsConnected ? 'live updates connected' : 'offline'}
-            >
-              <i className="fa-solid fa-circle text-[6px]" /> {state.wsConnected ? 'live' : 'offline'}
-            </span>
-          </span>
         </div>
 
         {/* request | response (http) or a single realtime pane */}

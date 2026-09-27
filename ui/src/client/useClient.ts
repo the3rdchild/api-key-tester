@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { clientApi, type SendResponse } from '../lib/clientApi.ts';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { api } from '../lib/api.ts';
+import { trackLive } from '../lib/liveStatus.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import { emptyRealtime, emptyRequest } from '../../../shared/collections.ts';
 import { destroySession } from './realtime/useRealtime.ts';
@@ -121,7 +122,6 @@ export function useClient() {
   const [chainable, setChainable] = useState<{ id: string; name: string; status: number }[]>([]);
   /** bumped when the OAuth callback tab stores a token, so the Auth tab refreshes */
   const [tokenTick, setTokenTick] = useState(0);
-  const [wsConnected, setWsConnected] = useState(false);
 
   // keep the active tab pointing at something real
   useEffect(() => {
@@ -211,10 +211,9 @@ export function useClient() {
     const connect = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/live`);
+      trackLive(ws);
       wsRef.current = ws;
-      ws.onopen = () => setWsConnected(true);
       ws.onclose = () => {
-        setWsConnected(false);
         if (!closed) retry = setTimeout(connect, 2000);
       };
       ws.onmessage = (ev) => {
@@ -482,7 +481,6 @@ export function useClient() {
     vaultKeys,
     chainable,
     tokenTick,
-    wsConnected,
     newTab,
     newRealtimeTab,
     updateRealtime,

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ResponsePane } from './ResponsePane.tsx';
 import { clientApi } from '../lib/clientApi.ts';
+import { trackLive } from '../lib/liveStatus.ts';
 import type {
   CollectionsFile,
   RunItemResult,
@@ -51,6 +52,7 @@ export function RunnerView() {
     const connect = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/live`);
+      trackLive(ws);
       wsRef.current = ws;
       ws.onclose = () => {
         if (!closed) retry = setTimeout(connect, 2000);

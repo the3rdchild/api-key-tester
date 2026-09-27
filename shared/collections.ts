@@ -408,6 +408,16 @@ export interface RealtimeSpec {
   /** the message currently typed in the composer (ws only), kept so a reload
    *  or tab switch doesn't lose it */
   draft?: string;
+  /** reconnect after a close nobody asked for, backing off between tries */
+  autoReconnect?: boolean;
+  /** ws only: an application-level keep-alive sent while connected */
+  heartbeat?: RealtimeHeartbeat;
+}
+
+export interface RealtimeHeartbeat {
+  enabled: boolean;
+  intervalSec: number;
+  payload: string;
 }
 
 export function emptyRealtime(id: string, kind: RealtimeKind = 'ws'): RealtimeSpec {
@@ -454,7 +464,13 @@ export interface RealtimeMessage {
 
 /** Frames the browser sends up the proxy socket. */
 export type RealtimeClientFrame =
-  | { t: 'open'; spec: RealtimeSpec; vars?: Record<string, string> }
+  | {
+      t: 'open';
+      spec: RealtimeSpec;
+      vars?: Record<string, string>;
+      /** sse reconnect: the last event id seen, sent as Last-Event-ID */
+      lastEventId?: string;
+    }
   | { t: 'send'; data: string }
   | { t: 'close' };
 
@@ -487,7 +503,9 @@ export type RealtimeServerFrame =
       /** sse: completion tokens the stream reported so far */
       tokens?: number;
     }
-  | { t: 'error'; message: string };
+  | { t: 'error'; message: string }
+  /** sse: the stream's `retry:` field — how long to wait before reconnecting */
+  | { t: 'retry'; ms: number };
 
 /** The everyday verbs — anything outside this set gets a gentle "unusual method" hint. */
 export const STANDARD_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
