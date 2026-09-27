@@ -51,6 +51,8 @@ export interface SendOptions {
   vars?: Record<string, string>;
   /** called with each piece of generated text when the response is a stream */
   onStreamChunk?: (text: string) => void;
+  /** abort the request in flight (a cancelled Poll) */
+  signal?: AbortSignal;
 }
 
 /** Script-set vars → environment → chained responses → vault fields.
@@ -306,6 +308,8 @@ export async function sendRequest(
   const settings = spec.settings ?? { timeoutMs: 30_000, followRedirects: true, maxRedirects: 5, useCookieJar: true };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), settings.timeoutMs);
+  const cancel = () => ctrl.abort();
+  opts.signal?.addEventListener('abort', cancel, { once: true });
 
   const redirects: RedirectHop[] = [];
   const setCookies: string[] = [];
@@ -532,10 +536,11 @@ export async function sendRequest(
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    const timedOut = ctrl.signal.aborted;
+    const cancelled = !!opts.signal?.aborted;
+    const timedOut = !cancelled && ctrl.signal.aborted;
     return {
       result: errorResult(
-        timedOut ? `Request timed out after ${settings.timeoutMs} ms` : msg,
+        cancelled ? 'Cancelled' : timedOut ? `Request timed out after ${settings.timeoutMs} ms` : msg,
         Date.now() - started,
         redirects,
       ),
@@ -548,6 +553,7 @@ export async function sendRequest(
     };
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', cancel);
   }
 }
 

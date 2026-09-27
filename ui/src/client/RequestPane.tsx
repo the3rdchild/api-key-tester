@@ -13,6 +13,7 @@ import { MultipartEditor } from './MultipartEditor.tsx';
 import { MatrixDialog } from './MatrixDialog.tsx';
 import { MethodPicker } from './MethodPicker.tsx';
 import { OAuth2Editor } from './OAuth2Editor.tsx';
+import { PollButton } from './PollButton.tsx';
 import { clientApi } from '../lib/clientApi.ts';
 import { graphqlFromJson } from '../lib/graphql.ts';
 import { STANDARD_METHODS } from '../../../shared/collections.ts';
@@ -40,6 +41,9 @@ interface Props {
   onSpec: (patch: Partial<RequestSpec>) => void;
   onFiles: (field: string, files: File[]) => void;
   onSend: () => void;
+  /** resend until the checks pass, and stop doing that */
+  onPoll: () => void;
+  onCancelPoll: () => void;
   onSave: () => void;
   onToast: (msg: string) => void;
   /** open the "generate code" dialog for this request */
@@ -56,6 +60,8 @@ export function RequestPane({
   onSpec,
   onFiles,
   onSend,
+  onPoll,
+  onCancelPoll,
   onSave,
   onToast,
   onCodegen,
@@ -139,6 +145,14 @@ export function RequestPane({
         >
           {tab.sending ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />} Send
         </button>
+        <PollButton
+          spec={spec}
+          polling={tab.polling}
+          busy={tab.sending || !spec.url}
+          onSettings={(poll) => onSpec({ settings: { ...settings, poll } })}
+          onStart={onPoll}
+          onCancel={onCancelPoll}
+        />
         <button
           type="button"
           onClick={onSave}

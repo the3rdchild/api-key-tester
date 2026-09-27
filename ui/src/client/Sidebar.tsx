@@ -705,6 +705,14 @@ function HistoryRow({
           {entry.pinned && <i className="fa-solid fa-thumbtack text-[8px] text-amber-500" />}
           <span>{time}</span>
           {entry.latencyMs != null && <span>· {entry.latencyMs} ms</span>}
+          {entry.poll && (
+            <span
+              title={`Polled ${entry.poll.attempts}× — ${entry.poll.outcome}`}
+              className={entry.poll.outcome === 'passed' ? 'text-emerald-600' : 'text-amber-600'}
+            >
+              · <i className="fa-solid fa-arrows-rotate text-[8px]" /> {entry.poll.attempts}
+            </span>
+          )}
           {rt && (
             <>
               <span title={rt.attempts > 1 ? `${rt.attempts} connects (reconnected)` : undefined}>

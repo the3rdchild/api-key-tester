@@ -1,32 +1,31 @@
 // sendRequest against a local server: GraphQL bodies (POST and GET), and the
 // redirect chain — per-hop timing, 303 turning into GET, and credentials that
 // must not follow a redirect to another origin. Plus GraphQL through the
-// importers, the .http export and the code generator, and the matrix keeping
-// whole responses for a compare.
+// importers, the .http export and the code generator, the matrix keeping
+// whole responses for a compare, and Poll through its HTTP route.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, describe, expect, mock, test } from 'bun:test';
+import './support/sandbox.ts';
+
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { emptyRequest } from '../shared/collections.ts';
-import type { CollectionsFile, RequestSpec } from '../shared/collections.ts';
+import type { CollectionsFile, RequestSpec, SendResult } from '../shared/collections.ts';
 
-// Cookies and OAuth tokens live next to ROOT_DIR: point it at a temp dir. The
-// script sandbox (quickjs) isn't needed here and may not be installed.
-const DATA = mkdtempSync(join(tmpdir(), 'keyway-send-'));
-mock.module('../server/core/store.ts', () => ({ ROOT_DIR: DATA, getAllKeys: async () => [] }));
-mock.module('../server/core/script.ts', () => ({ runScript: async () => ({}) }));
-mock.module('../server/core/collections.ts', () => ({ activeEnvVars: async () => ({}) }));
+// Cookies, tokens and history land in the sandbox's temp dir — see support/sandbox.ts.
 const { sendRequest, toCode } = await import('../server/core/send.ts');
 const { matrixCell, runMatrix } = await import('../server/core/matrix.ts');
 const { importPostman } = await import('../server/core/import/postman.ts');
 const { importInsomnia } = await import('../server/core/import/insomnia.ts');
 const { toHttpFile } = await import('../server/core/export-collection.ts');
+const { sendRouter } = await import('../server/routes/send.ts');
+const { listHistory } = await import('../server/core/req-history.ts');
+const { addSocket } = await import('../server/routes/ws.ts');
 
 // ─── servers ────────────────────────────────────────────────────────────────
 
 let hits = 0;
+/** /job answers 202 until its third call; /never always does */
+let jobCalls = 0;
 async function echo(req: Request): Promise<Response> {
   hits++;
   const url = new URL(req.url);
@@ -59,6 +58,10 @@ const api = Bun.serve({
         return redirect('/echo', 303);
       case '/away':
         return redirect(`http://127.0.0.1:${other.port}/echo`);
+      case '/job':
+        return ++jobCalls >= 3 ? Response.json({ state: 'done' }) : Response.json({ state: 'running' }, { status: 202 });
+      case '/never':
+        return Response.json({ state: 'running' }, { status: 202 });
       default:
         return echo(req);
     }
@@ -69,7 +72,6 @@ const base = `http://127.0.0.1:${api.port}`;
 afterAll(() => {
   api.stop(true);
   other.stop(true);
-  rmSync(DATA, { recursive: true, force: true });
 });
 
 function req(patch: Partial<RequestSpec>): RequestSpec {
@@ -255,5 +257,62 @@ describe('matrix', () => {
     const second = await runMatrix({ spec, targets: [{ baseURL: base, label: 'three' }] });
     expect(matrixCell(first.id, first.items[0]!.id!)).toBeUndefined();
     expect(matrixCell(second.id, second.items[0]!.id!)?.status).toBe(200);
+  });
+});
+
+// ─── poll, through its route ────────────────────────────────────────────────
+
+describe('poll route', () => {
+  const live: { type: string; pollId?: string }[] = [];
+  addSocket({ send: (data) => live.push(JSON.parse(data)) });
+
+  const pollSpec = (path: string, patch: Partial<RequestSpec> = {}) =>
+    req({
+      url: `${base}${path}`,
+      assertions: [{ source: 'status', op: 'eq', value: '200' }],
+      settings: { ...emptyRequest('x').settings, useCookieJar: false, poll: { intervalMs: 20, backoff: false, timeoutMs: 5000, maxAttempts: 10 } },
+      ...patch,
+    });
+  const start = (spec: RequestSpec, pollId: string) =>
+    sendRouter.request('/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec: { ...spec, id: pollId }, streamId: pollId }),
+    });
+
+  test('resends until the checks pass; one history entry, attempts on /live', async () => {
+    jobCalls = 0;
+    const res = await start(pollSpec('/job'), 'poll-job');
+    const body = (await res.json()) as { result: SendResult; historyId: string };
+    expect(body.result.status).toBe(200);
+    expect(body.result.poll).toMatchObject({ outcome: 'passed', attempts: 3 });
+    expect(body.result.poll!.log.map((a) => a.status)).toEqual([202, 202, 200]);
+    expect(live.filter((e) => e.type === 'poll:attempt' && e.pollId === 'poll-job')).toHaveLength(3);
+
+    const mine = (await listHistory()).filter((e) => e.requestId === 'poll-job');
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ id: body.historyId, status: 200, poll: { attempts: 3, outcome: 'passed' } });
+  });
+
+  test('nothing to wait for is refused', async () => {
+    const res = await start(pollSpec('/job', { assertions: [] }), 'poll-none');
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('add an assertion');
+  });
+
+  test('DELETE cancels it; the answer is the last attempt', async () => {
+    const pending = start(pollSpec('/never'), 'poll-cancel');
+    await Bun.sleep(80);
+    expect((await sendRouter.request('/poll/poll-cancel', { method: 'DELETE' })).status).toBe(200);
+    const body = (await (await pending).json()) as { result: SendResult };
+    expect(body.result.poll?.outcome).toBe('cancelled');
+    expect(body.result.status).toBe(202);
+    expect((await sendRouter.request('/poll/poll-cancel', { method: 'DELETE' })).status).toBe(404);
+  });
+
+  test('a request that cannot be sent stops after one attempt', async () => {
+    const res = await start(pollSpec('/job', { url: '{{nowhere}}/job' }), 'poll-fail');
+    const body = (await res.json()) as { result: SendResult };
+    expect(body.result.poll).toMatchObject({ outcome: 'failed', attempts: 1 });
   });
 });

@@ -3,26 +3,17 @@
 // WebSocket and SSE, LLM-shaped streams included — and the request history
 // those sessions are written to.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { DATA, VAULT_SECRET } from './support/sandbox.ts';
+
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import type { RealtimeBridge } from '../server/core/realtime.ts';
 import type { RealtimeHistoryEvent } from '../server/core/realtime-history.ts';
 import type { RealtimeClientFrame, RealtimeHistoryDetail, RealtimeSpec } from '../shared/collections.ts';
 
-// Nothing here may touch the real data: the history is written to a temp
-// dir, the vault holds one fake key (so scrubbing has something to scrub),
-// and the environment is empty — reading it for real would even create
-// collections.json in a fresh clone.
-const DATA = mkdtempSync(join(tmpdir(), 'keyway-test-'));
-const VAULT_SECRET = 'sk-vault-secret-0123456789abcdef';
-mock.module('../server/core/store.ts', () => ({
-  ROOT_DIR: DATA,
-  getAllKeys: async () => [{ id: 'k1', provider: 'openai', credentials: { apiKey: VAULT_SECRET } }],
-}));
-mock.module('../server/core/collections.ts', () => ({ activeEnvVars: async () => ({}) }));
+// Nothing here touches the real data — see support/sandbox.ts.
 const { createBridge } = await import('../server/core/realtime.ts');
 const { setRealtimeHistoryEmitter } = await import('../server/core/realtime-history.ts');
 const hist = await import('../server/core/req-history.ts');
@@ -135,7 +126,6 @@ Object.assign(globalThis, {
 afterAll(() => {
   upstream.stop(true);
   proxy.stop(true);
-  rmSync(DATA, { recursive: true, force: true });
 });
 
 // ─── helpers ────────────────────────────────────────────────────────────────

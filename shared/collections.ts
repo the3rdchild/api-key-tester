@@ -118,6 +118,53 @@ export interface RequestSettings {
   maxRedirects: number;
   /** send + capture cookies from the shared jar */
   useCookieJar: boolean;
+  /** how Poll resends this request, remembered with it */
+  poll?: PollSettings;
+}
+
+/** Poll: resend until every check (assertions, script tests) passes. */
+export interface PollSettings {
+  /** wait between attempts */
+  intervalMs: number;
+  /** double the wait after each attempt, up to 30 s */
+  backoff: boolean;
+  /** give up this long after the first attempt went out */
+  timeoutMs: number;
+  maxAttempts: number;
+}
+
+export const DEFAULT_POLL: PollSettings = { intervalMs: 2000, backoff: false, timeoutMs: 60_000, maxAttempts: 30 };
+
+/** Can Poll ever stop on success for this request? Script tests only show up
+ *  once it has run, so a post-script that calls test() counts. */
+export function hasChecks(spec: RequestSpec): boolean {
+  const assertions = (spec.assertions ?? []).some((a) => a.enabled !== false && a.source);
+  return assertions || /\btest\s*\(/.test(spec.scripts?.post ?? '');
+}
+
+export interface PollAttempt {
+  attempt: number;
+  /** ms after the poll started */
+  at: number;
+  status?: number;
+  error?: string;
+  latencyMs: number;
+  /** checks that passed, of how many ran */
+  passed: number;
+  total: number;
+}
+
+/** `failed`: the request couldn't be sent at all (bad URL, undefined var,
+ *  OAuth waiting on the browser) — retrying it as is would never help. */
+export type PollOutcome = 'passed' | 'timeout' | 'max-attempts' | 'cancelled' | 'failed';
+
+/** How a polled response came to be the one you're looking at. */
+export interface PollSummary {
+  outcome: PollOutcome;
+  attempts: number;
+  elapsedMs: number;
+  /** every attempt (the latest 100) */
+  log: PollAttempt[];
 }
 
 export type AssertOp =
@@ -262,6 +309,8 @@ export interface SendResult {
   redirects: RedirectHop[];
   /** ms spent following redirects before the final request went out */
   redirectMs?: number;
+  /** set when this response is the last attempt of a Poll */
+  poll?: PollSummary;
   setCookies: string[];
   /** set when the request never completed (timeout, DNS, TLS, …) */
   error?: string;
@@ -379,6 +428,8 @@ export interface ReqHistoryEntry {
   checks?: { passed: number; total: number };
   /** pinned entries are never evicted when the log is trimmed */
   pinned?: boolean;
+  /** the last attempt of a Poll: how many it took and how it ended */
+  poll?: { attempts: number; outcome: PollOutcome };
   /** set for a WebSocket / SSE session; absent for an HTTP request */
   kind?: RealtimeKind;
   realtime?: RealtimeSummary;

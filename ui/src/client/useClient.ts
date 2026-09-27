@@ -15,6 +15,7 @@ import { emptyRealtime, emptyRequest } from '../../../shared/collections.ts';
 import { destroySession, loadTranscript } from './realtime/useRealtime.ts';
 import type {
   CollectionsFile,
+  PollAttempt,
   RealtimeKind,
   RealtimeSpec,
   ReqHistoryEntry,
@@ -44,6 +45,8 @@ export interface Tab {
   needsAuth?: boolean;
   /** text accumulated from a streamed response while it is still arriving */
   streamText?: string;
+  /** set while a Poll runs: the latest attempt, and when the next goes out */
+  polling?: { attempt?: PollAttempt; nextAt?: number };
   /** the history entry this tab's response came from, if it is not a fresh send */
   historical?: { id: string; ts: string };
   /** last response for this tab, so a reload can bring it back */
@@ -234,6 +237,9 @@ export function useClient() {
             entry?: ReqHistoryEntry;
             streamId?: string;
             text?: string;
+            pollId?: string;
+            attempt?: PollAttempt;
+            nextInMs?: number;
           };
           if (msg.type === 'collections:changed') reloadCollections().catch(() => {});
           if (msg.type === 'oauth:token') setTokenTick((n) => n + 1);
@@ -247,6 +253,13 @@ export function useClient() {
           }
           if (msg.type === 'req-history:appended' && msg.entry) {
             setHistory((prev) => [msg.entry!, ...prev].slice(0, 200));
+          }
+          if (msg.type === 'poll:attempt' && msg.pollId && msg.attempt) {
+            const progress = {
+              attempt: msg.attempt,
+              nextAt: msg.nextInMs != null ? Date.now() + msg.nextInMs : undefined,
+            };
+            setTabs((prev) => prev.map((t) => (t.id === msg.pollId && t.polling ? { ...t, polling: progress } : t)));
           }
           // a realtime session's entry, rewritten when it ends
           if (msg.type === 'req-history:updated' && msg.entry) {
@@ -404,17 +417,22 @@ export function useClient() {
     [collections],
   );
 
-  const send = useCallback(
-    async (tabId: string) => {
+  /** A send or a poll: the tab is busy until the response lands in it. */
+  const dispatch = useCallback(
+    async (tabId: string, how: 'send' | 'poll') => {
       const tab = tabs.find((t) => t.id === tabId);
       // Realtime tabs carry a placeholder spec; Ctrl+Enter there belongs to
       // the message composer, not to an HTTP send.
       if (!tab || tab.kind !== 'http') return;
-      patchTab(tabId, { sending: true, error: undefined, streamText: '' });
+      patchTab(tabId, { sending: true, error: undefined, streamText: '', polling: how === 'poll' ? {} : undefined });
       try {
-        const res: SendResponse = await clientApi.send(tab.spec, tab.files, tabId);
+        const res: SendResponse =
+          how === 'poll'
+            ? await clientApi.poll(tab.spec, tab.files, tabId)
+            : await clientApi.send(tab.spec, tab.files, tabId);
         patchTab(tabId, {
           sending: false,
+          polling: undefined,
           result: res.result,
           missing: res.missing,
           note: res.note,
@@ -428,12 +446,20 @@ export function useClient() {
       } catch (e) {
         patchTab(tabId, {
           sending: false,
+          polling: undefined,
           error: e instanceof Error ? e.message : String(e),
         });
       }
     },
     [tabs, patchTab],
   );
+
+  const send = useCallback((tabId: string) => dispatch(tabId, 'send'), [dispatch]);
+  /** Resend until the request's checks pass — see server/core/poll.ts. */
+  const poll = useCallback((tabId: string) => dispatch(tabId, 'poll'), [dispatch]);
+  const cancelPoll = useCallback((tabId: string) => {
+    clientApi.cancelPoll(tabId).catch(() => {});
+  }, []);
 
   const saveTab = useCallback(
     async (tabId: string, opts: { name?: string; parentId?: string | null } = {}) => {
@@ -524,6 +550,8 @@ export function useClient() {
     updateSpec,
     patchTab,
     send,
+    poll,
+    cancelPoll,
     saveTab,
     reloadCollections,
     reloadHistory,

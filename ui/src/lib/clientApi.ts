@@ -44,6 +44,29 @@ export interface DeviceStart {
   expiresIn: number;
 }
 
+/** A send or a poll: JSON, or multipart when the body carries files. */
+function postSend(
+  url: string,
+  spec: RequestSpec,
+  files: Record<string, File[]> | undefined,
+  streamId?: string,
+): Promise<SendResponse> {
+  const hasFiles = files && Object.values(files).some((list) => list.length > 0);
+  if (!hasFiles) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec, streamId }),
+    }).then((r) => json<SendResponse>(r));
+  }
+  const form = new FormData();
+  form.append('spec', JSON.stringify({ spec, streamId }));
+  for (const [field, list] of Object.entries(files!)) {
+    for (const file of list) form.append(`file:${field}`, file, file.name);
+  }
+  return fetch(url, { method: 'POST', body: form }).then((r) => json<SendResponse>(r));
+}
+
 export const clientApi = {
   load: () => fetch(BASE).then((r) => json<CollectionsFile>(r)),
 
@@ -150,22 +173,14 @@ export const clientApi = {
 
   /** Send a request. Files (if any) travel as multipart so bytes never hit disk.
    *  `streamId` opts into live chunks over /live for streamed responses. */
-  send: (spec: RequestSpec, files?: Record<string, File[]>, streamId?: string) => {
-    const hasFiles = files && Object.values(files).some((list) => list.length > 0);
-    if (!hasFiles) {
-      return fetch('/api/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spec, streamId }),
-      }).then((r) => json<SendResponse>(r));
-    }
-    const form = new FormData();
-    form.append('spec', JSON.stringify({ spec, streamId }));
-    for (const [field, list] of Object.entries(files!)) {
-      for (const file of list) form.append(`file:${field}`, file, file.name);
-    }
-    return fetch('/api/send', { method: 'POST', body: form }).then((r) => json<SendResponse>(r));
-  },
+  send: (spec: RequestSpec, files?: Record<string, File[]>, streamId?: string) =>
+    postSend('/api/send', spec, files, streamId),
+
+  /** resend until every check passes; attempts arrive on /live as poll:attempt */
+  poll: (spec: RequestSpec, files: Record<string, File[]> | undefined, pollId: string) =>
+    postSend('/api/send/poll', spec, files, pollId),
+
+  cancelPoll: (pollId: string) => fetch(`/api/send/poll/${pollId}`, { method: 'DELETE' }).then(() => undefined),
 
   importCurl: (text: string) =>
     fetch(`${BASE}/import-curl`, {

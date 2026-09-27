@@ -1,13 +1,16 @@
 // Request/response UI pieces that aren't realtime: the GraphQL helpers behind
-// the body editor, the timing (redirect waterfall) view, and the compare dialog.
+// the body editor, the timing (redirect waterfall) view, the compare dialog,
+// and Poll's button and log.
 
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CompareDialog, bodyOf } from '../ui/src/client/CompareDialog.tsx';
+import { PollButton } from '../ui/src/client/PollButton.tsx';
+import { PollChip, PollLog } from '../ui/src/client/PollLog.tsx';
 import { TimingView } from '../ui/src/client/TimingView.tsx';
 import { graphqlFromJson, operationNames } from '../ui/src/lib/graphql.ts';
-import type { SendResult } from '../shared/collections.ts';
+import { emptyRequest, type PollSummary, type SendResult } from '../shared/collections.ts';
 
 const text = (html: string) =>
   html
@@ -155,5 +158,56 @@ describe('CompareDialog', () => {
   test('binary bodies: same or not, never a hex diff', () => {
     const html = text(dialog(res('AAAA', { bodyEncoding: 'base64', size: 3 }), res('AAAB', { bodyEncoding: 'base64', size: 3 })));
     expect(html).toContain('they differ');
+  });
+});
+
+describe('Poll', () => {
+  const noop = () => {};
+  const withCheck = { ...emptyRequest('p'), assertions: [{ source: 'status', op: 'eq' as const, value: '200' }] };
+  const button = (props: Partial<Parameters<typeof PollButton>[0]>) =>
+    renderToStaticMarkup(
+      <PollButton spec={withCheck} polling={undefined} busy={false} onSettings={noop} onStart={noop} onCancel={noop} {...props} />,
+    );
+
+  test('without a check to wait for, the button says what to add', () => {
+    const html = button({ spec: emptyRequest('p') });
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('add an assertion in the Tests tab first');
+  });
+
+  test('while polling it shows the attempt, the checks, and a way out', () => {
+    const html = text(
+      button({
+        polling: { attempt: { attempt: 3, at: 4000, status: 202, latencyMs: 12, passed: 0, total: 1 }, nextAt: Date.now() + 1500 },
+      }),
+    );
+    expect(html).toContain('attempt 3/30');
+    expect(html).toContain('202 · 0/1 checks');
+    expect(html).toMatch(/next in 1\.\d s/);
+    expect(html).toContain('Cancel');
+  });
+
+  const summary: PollSummary = {
+    outcome: 'passed',
+    attempts: 3,
+    elapsedMs: 4200,
+    log: [
+      { attempt: 1, at: 0, status: 202, latencyMs: 11, passed: 0, total: 1 },
+      { attempt: 2, at: 2010, error: 'ECONNRESET', latencyMs: 3, passed: 0, total: 0 },
+      { attempt: 3, at: 4020, status: 200, latencyMs: 9, passed: 1, total: 1 },
+    ],
+  };
+
+  test('the chip says how many and how it ended', () => {
+    expect(text(renderToStaticMarkup(<PollChip poll={summary} onClick={noop} />))).toContain('polled 3× · passed');
+    expect(text(renderToStaticMarkup(<PollChip poll={{ ...summary, outcome: 'timeout' }} onClick={noop} />))).toContain('timed out');
+  });
+
+  test('the log lists every attempt', () => {
+    const html = text(renderToStaticMarkup(<PollLog poll={summary} />));
+    expect(html).toContain('Polled 3 times over 4.2 s — every check passed');
+    expect(html).toContain('1 +0.0 s 202 0/1 11 ms');
+    expect(html).toContain('2 +2.0 s error 0/0 3 ms');
+    expect(html).toContain('3 +4.0 s 200 1/1 9 ms');
   });
 });

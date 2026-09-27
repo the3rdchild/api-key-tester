@@ -1,0 +1,4 @@
+[test]
+# One shared sandbox for every test file (temp data dir, module mocks); as a
+# preload its afterAll runs once, after the whole run. See tests/support/sandbox.ts.
+preload = ["./tests/support/sandbox.ts"]

@@ -9,20 +9,56 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 
-import { sendRequest, toCurl, toCode } from '../core/send.ts';
+import { sendRequest, toCurl, toCode, type SendOutcome } from '../core/send.ts';
 import { CODE_LANGS, type CodeLang } from '../core/codegen.ts';
 import { activeEnvVars, applyEnvVarChanges } from '../core/collections.ts';
+import { pollUntil } from '../core/poll.ts';
 import { record } from '../core/req-history.ts';
 import { broadcast } from './ws.ts';
-import type { RequestSpec } from '../../shared/collections.ts';
+import { DEFAULT_POLL, hasChecks, type PollSettings, type RequestSpec } from '../../shared/collections.ts';
 
 export const sendRouter = new Hono();
 
 interface SendPayload {
   spec: RequestSpec;
   vars?: Record<string, string>;
-  /** when present, stream chunks are pushed to /live under this id */
+  /** when present, stream chunks are pushed to /live under this id; a Poll
+   *  reports its attempts under it too, and is cancelled by it */
   streamId?: string;
+}
+
+/** One send, as the Send button does it: the environment re-read (a script
+ *  may have changed it), and whatever the scripts set written back. */
+async function sendOnce(
+  spec: RequestSpec,
+  vars: Record<string, string> | undefined,
+  files: Map<string, File[]>,
+  extra: { streamId?: string; signal?: AbortSignal } = {},
+): Promise<SendOutcome> {
+  const envVars = { ...(await activeEnvVars()), ...(vars ?? {}) };
+  const outcome = await sendRequest(spec, {
+    files,
+    vars: envVars,
+    signal: extra.signal,
+    onStreamChunk: extra.streamId
+      ? (text) => broadcast({ type: 'stream:chunk', streamId: extra.streamId!, text })
+      : undefined,
+  });
+  if (outcome.envVars) await applyEnvVarChanges(outcome.envVars);
+  return outcome;
+}
+
+/** Into the history, and the response the client gets. */
+async function respond(c: Context, spec: RequestSpec, outcome: SendOutcome) {
+  const entry = await record(spec, outcome.sentHeaders, outcome.sentBody, outcome.result, outcome.sentUrl);
+  broadcast({ type: 'req-history:appended', entry });
+  return c.json({
+    result: outcome.result,
+    missing: outcome.missing,
+    note: outcome.note,
+    needsAuthorization: outcome.needsAuthorization,
+    historyId: entry.id,
+  });
 }
 
 async function readPayload(
@@ -64,31 +100,68 @@ sendRouter.post('/', async (c) => {
   }
   if (!spec?.url) return c.json({ error: 'Missing url' }, 400);
 
-  const envVars = { ...(await activeEnvVars()), ...(vars ?? {}) };
-  const outcome = await sendRequest(spec, {
-    files,
-    vars: envVars,
-    onStreamChunk: streamId
-      ? (text) => broadcast({ type: 'stream:chunk', streamId, text })
-      : undefined,
-  });
-  if (outcome.envVars) await applyEnvVarChanges(outcome.envVars);
-  const entry = await record(
-    spec,
-    outcome.sentHeaders,
-    outcome.sentBody,
-    outcome.result,
-    outcome.sentUrl,
-  );
-  broadcast({ type: 'req-history:appended', entry });
+  return respond(c, spec, await sendOnce(spec, vars, files, { streamId }));
+});
 
-  return c.json({
-    result: outcome.result,
-    missing: outcome.missing,
-    note: outcome.note,
-    needsAuthorization: outcome.needsAuthorization,
-    historyId: entry.id,
-  });
+// ─── poll ───────────────────────────────────────────────────────────────────
+
+/** Polls in progress, by id (the client uses the tab's), so they can be cancelled. */
+const polls = new Map<string, AbortController>();
+
+/** POST /api/send/poll - resend until every check passes; same payload as a
+ *  send. Attempts are reported on /live as they happen; the response is the
+ *  last attempt, with the poll's summary on it. */
+sendRouter.post('/poll', async (c) => {
+  let spec: RequestSpec;
+  let vars: Record<string, string> | undefined;
+  let pollId: string | undefined;
+  let files: Map<string, File[]>;
+  try {
+    ({ spec, vars, streamId: pollId, files } = await readPayload(c));
+  } catch (e) {
+    return c.json({ error: `Bad request payload: ${e instanceof Error ? e.message : e}` }, 400);
+  }
+  if (!spec?.url) return c.json({ error: 'Missing url' }, 400);
+  if (!hasChecks(spec)) {
+    return c.json(
+      { error: 'Nothing to poll for: add an assertion in the Tests tab (or a test() in the post-response script).' },
+      400,
+    );
+  }
+
+  const settings: PollSettings = { ...DEFAULT_POLL, ...spec.settings?.poll };
+  const ctrl = new AbortController();
+  if (pollId) {
+    polls.get(pollId)?.abort(); // a new poll from the same tab replaces the old
+    polls.set(pollId, ctrl);
+  }
+  try {
+    const { outcome, poll } = await pollUntil({
+      settings,
+      signal: ctrl.signal,
+      send: () => sendOnce(spec, vars, files, { signal: ctrl.signal }),
+      // Stopped before anything went out — an undefined {{var}}, a bad URL,
+      // OAuth waiting on the browser. A network error still sent headers, and
+      // is worth retrying: the service may simply not be up yet.
+      fatal: (o) =>
+        !!o.needsAuthorization || o.missing.length > 0 || (!!o.result.error && Object.keys(o.sentHeaders).length === 0),
+      onAttempt: (attempt, nextInMs) => {
+        if (pollId) broadcast({ type: 'poll:attempt', pollId, attempt, nextInMs });
+      },
+    });
+    outcome.result.poll = poll;
+    return respond(c, spec, outcome);
+  } finally {
+    if (pollId && polls.get(pollId) === ctrl) polls.delete(pollId);
+  }
+});
+
+/** DELETE /api/send/poll/:id - stop a poll; it answers with its last attempt. */
+sendRouter.delete('/poll/:id', (c) => {
+  const ctrl = polls.get(c.req.param('id'));
+  if (!ctrl) return c.json({ error: 'No poll running under that id' }, 404);
+  ctrl.abort();
+  return c.json({ ok: true });
 });
 
 /** POST /api/send/curl - render the request as a curl command. */

@@ -15,7 +15,7 @@ import { CodeGenDialog } from './CodeGenDialog.tsx';
 import { CompareDialog } from './CompareDialog.tsx';
 import { COMPARE_EVENT, historySide, openCompare, type CompareRequest } from './compare.ts';
 import { useClient } from './useClient.ts';
-import type { RequestSpec } from '../../../shared/collections.ts';
+import { hasChecks, type RequestSpec } from '../../../shared/collections.ts';
 import { clientApi } from '../lib/clientApi.ts';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 
@@ -190,6 +190,13 @@ export function ClientView({
         e.preventDefault();
         fn();
       };
+      if (mod && e.shiftKey && e.key === 'Enter') {
+        return run(() => {
+          if (!active || active.kind !== 'http' || active.sending) return;
+          if (!hasChecks(active.spec)) showToast('Poll needs a check to wait for — add an assertion in the Tests tab');
+          else void state.poll(active.id);
+        });
+      }
       if (mod && e.key === 'Enter') return run(() => active && void state.send(active.id));
       if (mod && key === 's') return run(requestSave);
       // Ctrl+K is Firefox's search bar, but a page may take it - and Alt+K is
@@ -436,6 +443,8 @@ export function ClientView({
                     state.patchTab(active.id, { files: { ...active.files, [field]: files } })
                   }
                   onSend={() => void state.send(active.id)}
+                  onPoll={() => void state.poll(active.id)}
+                  onCancelPoll={() => state.cancelPoll(active.id)}
                   onSave={requestSave}
                   onToast={showToast}
                   onCodegen={() => setCodegenOpen(true)}

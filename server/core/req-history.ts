@@ -142,6 +142,7 @@ export async function record(
     },
     responsePreview: preview(result.body, secrets),
     checks: countChecks(result),
+    poll: result.poll ? { attempts: result.poll.attempts, outcome: result.poll.outcome } : undefined,
   };
 
   await locked(async () => {

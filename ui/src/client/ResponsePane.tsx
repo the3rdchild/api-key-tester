@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { JsonTree } from './JsonTree.tsx';
+import { PollChip, PollLog } from './PollLog.tsx';
 import { TimingView } from './TimingView.tsx';
 import { formatBytes } from '../lib/format.ts';
 import type { SendResult } from '../../../shared/collections.ts';
@@ -56,7 +57,8 @@ export function ResponsePane({ result, error, sending, liveStream, historical, o
     })),
   ];
   const passed = checks.filter((c) => c.passed).length;
-  const hasDiagnostics = checks.length > 0 || (result?.logs?.length ?? 0) > 0 || !!result?.scriptError;
+  const hasDiagnostics =
+    checks.length > 0 || (result?.logs?.length ?? 0) > 0 || !!result?.scriptError || !!result?.poll;
 
   // A fresh response may carry no tests at all - don't leave the pane parked
   // on a tab that no longer exists.
@@ -249,6 +251,7 @@ export function ResponsePane({ result, error, sending, liveStream, historical, o
                 {result.redirects.length > 1 ? 's' : ''}
               </button>
             )}
+            {result.poll && <PollChip poll={result.poll} onClick={() => setView('tests')} />}
             {checks.length > 0 && (
               <button
                 type="button"
@@ -390,6 +393,7 @@ export function ResponsePane({ result, error, sending, liveStream, historical, o
         {result && !error && view === 'timing' && <TimingView result={result} />}
         {result && !error && view === 'tests' && (
           <div className="p-3 text-xs">
+            {result.poll && <PollLog poll={result.poll} />}
             {result.scriptError && (
               <p className="mb-3 whitespace-pre-wrap rounded bg-amber-50 p-2 font-mono text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 {result.scriptError}

@@ -52,6 +52,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     icon: 'fa-paper-plane',
     items: [
       { keys: [['Ctrl', 'Enter']], label: 'Send request', scope: 'API client' },
+      { keys: [['Ctrl', 'Shift', 'Enter']], label: 'Poll: resend until the checks pass', scope: 'API client' },
       { keys: [['Ctrl', 'S']], label: 'Save request', scope: 'API client' },
       { keys: [['Alt', 'L']], label: 'Focus the URL bar', scope: 'API client' },
       { keys: [['Alt', 'C']], label: 'Copy request as cURL', scope: 'API client' },

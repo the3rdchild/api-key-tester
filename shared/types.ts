@@ -5,6 +5,7 @@
 import type {
   MatrixItem,
   MatrixSummary,
+  PollAttempt,
   ReqHistoryEntry,
   RunItemResult,
   RunSummary,
@@ -141,7 +142,9 @@ export type WSEvent =
   | { type: 'matrix:done'; run: MatrixSummary }
   | { type: 'req-history:appended'; entry: ReqHistoryEntry }
   /** a realtime session's entry, rewritten when the session ends */
-  | { type: 'req-history:updated'; entry: ReqHistoryEntry };
+  | { type: 'req-history:updated'; entry: ReqHistoryEntry }
+  /** one Poll attempt done; `nextInMs` absent when it was the last */
+  | { type: 'poll:attempt'; pollId: string; attempt: PollAttempt; nextInMs?: number };
 
 export const STATUS_META: Record<TestState, { label: string; color: string }> = {
   untested: { label: 'Untested', color: 'gray' },
