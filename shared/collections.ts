@@ -387,4 +387,26 @@ export function emptyRequest(id: string, name = 'Untitled request'): RequestSpec
   };
 }
 
-export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+/** The everyday verbs — anything outside this set gets a gentle "unusual method" hint. */
+export const STANDARD_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+
+/**
+ * Preset verbs offered in the method dropdown. The field itself is a free-text
+ * combobox, so any custom verb still works — this list is only the suggestions.
+ * Beyond the standard eight: TRACE/CONNECT (RFC 9110), QUERY (draft, safe body),
+ * PURGE (cache invalidation) and the WebDAV verbs from RFC 4918.
+ */
+export const METHODS = [
+  ...STANDARD_METHODS,
+  'TRACE',
+  'CONNECT',
+  'QUERY',
+  'PURGE',
+  'PROPFIND',
+  'PROPPATCH',
+  'MKCOL',
+  'COPY',
+  'MOVE',
+  'LOCK',
+  'UNLOCK',
+] as const;

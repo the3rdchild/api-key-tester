@@ -12,7 +12,7 @@ import { MultipartEditor } from './MultipartEditor.tsx';
 import { MatrixDialog } from './MatrixDialog.tsx';
 import { OAuth2Editor } from './OAuth2Editor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
-import { METHODS } from '../../../shared/collections.ts';
+import { METHODS, STANDARD_METHODS } from '../../../shared/collections.ts';
 import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import type { Tab } from './useClient.ts';
@@ -59,6 +59,12 @@ export function RequestPane({
   const spec = tab.spec;
   const settings = spec.settings;
 
+  // A verb outside the everyday set is legal but can behave oddly in fetch
+  // (CONNECT/TRACE ignore the body, WebDAV verbs need their own body shape),
+  // so we flag it without blocking it — a tester should still be free to send.
+  const method = spec.method.trim().toUpperCase();
+  const unusualMethod = method.length > 0 && !STANDARD_METHODS.includes(method as (typeof STANDARD_METHODS)[number]);
+
   const counts = {
     params: spec.params.filter((p) => p.enabled && p.key).length,
     headers: spec.headers.filter((h) => h.enabled && h.key).length,
@@ -95,18 +101,25 @@ export function RequestPane({
         <label htmlFor="req-method" className="sr-only">
           Method
         </label>
-        <select
+        <input
           id="req-method"
+          list="req-method-presets"
           value={spec.method}
-          onChange={(e) => onSpec({ method: e.target.value })}
-          className="h-9 shrink-0 rounded border border-slate-300 bg-white px-2 text-sm font-semibold dark:border-slate-700 dark:bg-slate-800"
-        >
+          placeholder="GET"
+          spellCheck={false}
+          autoComplete="off"
+          aria-describedby={unusualMethod ? 'req-method-hint' : undefined}
+          onChange={(e) => onSpec({ method: e.target.value.toUpperCase() })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSend();
+          }}
+          className="h-9 w-28 shrink-0 rounded border border-slate-300 bg-white px-2 text-sm font-semibold uppercase dark:border-slate-700 dark:bg-slate-800"
+        />
+        <datalist id="req-method-presets">
           {METHODS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
+            <option key={m} value={m} />
           ))}
-        </select>
+        </datalist>
 
         <label htmlFor="req-url" className="sr-only">
           URL
@@ -157,6 +170,17 @@ export function RequestPane({
           <i className="fa-solid fa-terminal" />
         </button>
         </div>
+
+        {unusualMethod && (
+          <p
+            id="req-method-hint"
+            className="w-full text-xs text-amber-600 dark:text-amber-400"
+          >
+            <i className="fa-solid fa-circle-info mr-1" />
+            <span className="font-semibold">{method}</span> is a non-standard verb — it&apos;s sent as-is,
+            but fetch may drop the body or ignore redirects for it.
+          </p>
+        )}
       </div>
 
       {/* section tabs */}
