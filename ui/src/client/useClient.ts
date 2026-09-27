@@ -375,7 +375,9 @@ export function useClient() {
   const send = useCallback(
     async (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
-      if (!tab) return;
+      // Realtime tabs carry a placeholder spec; Ctrl+Enter there belongs to
+      // the message composer, not to an HTTP send.
+      if (!tab || tab.kind !== 'http') return;
       patchTab(tabId, { sending: true, error: undefined, streamText: '' });
       try {
         const res: SendResponse = await clientApi.send(tab.spec, tab.files, tabId);

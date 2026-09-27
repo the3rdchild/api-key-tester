@@ -44,6 +44,8 @@ export interface RTSnapshot {
 
 /** Keep the log bounded — a chatty stream should never grow without limit. */
 const LOG_CAP = 1000;
+/** Sent messages remembered for the composer's Alt+↑/↓. */
+const HISTORY_CAP = 50;
 const NO_STATS: RTStats = { sent: 0, sentBytes: 0, received: 0, receivedBytes: 0 };
 const IDLE: RTSnapshot = { state: 'idle', stats: NO_STATS, log: [] };
 const encoder = new TextEncoder();
@@ -56,6 +58,8 @@ interface Session {
   pending: RealtimeMessage[];
   stats: RTStats;
   flushScheduled: boolean;
+  /** what was sent, oldest first — apart from the log, so Clear keeps it */
+  history: string[];
 }
 
 const sessions = new Map<string, Session>();
@@ -63,7 +67,15 @@ const sessions = new Map<string, Session>();
 function sess(tabId: string): Session {
   let s = sessions.get(tabId);
   if (!s) {
-    s = { socket: null, snap: IDLE, listeners: new Set(), pending: [], stats: { ...NO_STATS }, flushScheduled: false };
+    s = {
+      socket: null,
+      snap: IDLE,
+      listeners: new Set(),
+      pending: [],
+      stats: { ...NO_STATS },
+      flushScheduled: false,
+      history: [],
+    };
     sessions.set(tabId, s);
   }
   return s;
@@ -163,10 +175,18 @@ function handleFrame(tabId: string, f: RealtimeServerFrame): void {
   else if (f.state === 'error') append(tabId, line('error', `Error${f.reason ? `: ${f.reason}` : ''}`));
 }
 
+/** Let go of the session's socket *before* closing it, so its onclose sees
+ *  it's been superseded — some runtimes (Bun) fire close synchronously. */
+function dropSocket(s: Session): WebSocket | null {
+  const socket = s.socket;
+  s.socket = null;
+  return socket;
+}
+
 export function connect(tabId: string, spec: RealtimeSpec, vars: Record<string, string>): void {
   const s = sess(tabId);
   try {
-    s.socket?.close();
+    dropSocket(s)?.close();
   } catch {
     /* already gone */
   }
@@ -214,23 +234,33 @@ export function sendMessage(tabId: string, data: string): boolean {
   if (!s.socket || s.socket.readyState !== WebSocket.OPEN) return false;
   s.socket.send(JSON.stringify({ t: 'send', data } satisfies RealtimeClientFrame));
   append(tabId, { id: uid(), type: 'send', at: Date.now(), data, size: encoder.encode(data).length });
+  if (s.history[s.history.length - 1] !== data) {
+    s.history.push(data);
+    if (s.history.length > HISTORY_CAP) s.history.shift();
+  }
   return true;
+}
+
+/** Sent messages for this tab, oldest first. Memory only: survives tab
+ *  switches and Clear, not a reload. */
+export function sentHistory(tabId: string): readonly string[] {
+  return sess(tabId).history;
 }
 
 export function disconnect(tabId: string): void {
   const s = sess(tabId);
-  if (s.socket) {
+  const socket = dropSocket(s);
+  if (socket) {
     try {
-      s.socket.send(JSON.stringify({ t: 'close' } satisfies RealtimeClientFrame));
+      socket.send(JSON.stringify({ t: 'close' } satisfies RealtimeClientFrame));
     } catch {
       /* socket may be closing */
     }
     try {
-      s.socket.close();
+      socket.close();
     } catch {
       /* already gone */
     }
-    s.socket = null;
   }
   if (s.snap.state === 'open' || s.snap.state === 'connecting') {
     patch(tabId, { state: 'closed' });
@@ -251,7 +281,7 @@ export function destroySession(tabId: string): void {
   const s = sessions.get(tabId);
   if (!s) return;
   try {
-    s.socket?.close();
+    dropSocket(s)?.close();
   } catch {
     /* already gone */
   }

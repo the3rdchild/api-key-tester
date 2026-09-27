@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { KeyValueEditor } from '../KeyValueEditor.tsx';
+import { Composer } from './Composer.tsx';
 import { LogRow } from './LogRow.tsx';
 import { countByType, filterLog, LogToolbar, type LogFilter } from './LogToolbar.tsx';
 import { clearLog, connect, disconnect, sendMessage, useRealtime, type RTSnapshot } from './useRealtime.ts';
@@ -54,13 +55,6 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
       return;
     }
     connect(tab.id, rt, {});
-  };
-
-  const send = () => {
-    const data = rt.draft ?? '';
-    if (!data) return;
-    if (!sendMessage(tab.id, data)) onToast('Not connected');
-    else onRt({ draft: '' });
   };
 
   // ─── log view ─────────────────────────────────────────────────────────────
@@ -314,31 +308,14 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
         )}
       </div>
 
-      {/* composer (ws only) */}
       {isWs && (
-        <div className="flex shrink-0 items-end gap-2 border-t border-slate-200 p-2 dark:border-slate-800">
-          <textarea
-            value={rt.draft ?? ''}
-            placeholder={snap.state === 'open' ? 'Message to send · Ctrl+Enter' : 'Connect to send messages'}
-            onChange={(e) => onRt({ draft: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            rows={2}
-            className="min-h-[2.5rem] flex-1 resize-y rounded border border-slate-300 bg-white px-2 py-1.5 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"
-          />
-          <button
-            type="button"
-            onClick={send}
-            disabled={snap.state !== 'open' || !(rt.draft ?? '').length}
-            className="h-9 shrink-0 rounded bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            <i className="fa-solid fa-paper-plane" /> Send
-          </button>
-        </div>
+        <Composer
+          tabId={tab.id}
+          draft={rt.draft ?? ''}
+          onDraft={(draft) => onRt({ draft })}
+          connected={snap.state === 'open'}
+          onToast={onToast}
+        />
       )}
     </section>
   );
