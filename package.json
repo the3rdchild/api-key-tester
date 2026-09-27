@@ -13,6 +13,7 @@
     "parse": "bun scripts/parse-once.ts",
     "benchmark": "bun scripts/benchmark.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test ./tests",
     "run:collection": "bun scripts/run.ts"
   },
   "dependencies": {

@@ -448,6 +448,8 @@ export interface RealtimeMessage {
   event?: string;
   /** sse only: the event's `id:` */
   eventId?: string;
+  /** sse only: the LLM text this event carries, when it's a completion chunk */
+  delta?: string;
 }
 
 /** Frames the browser sends up the proxy socket. */
@@ -480,6 +482,10 @@ export type RealtimeServerFrame =
       heartbeat?: boolean;
       event?: string;
       eventId?: string;
+      /** sse: the text this event adds to an LLM completion */
+      delta?: string;
+      /** sse: completion tokens the stream reported so far */
+      tokens?: number;
     }
   | { t: 'error'; message: string };
 

@@ -28,6 +28,21 @@ export interface RTStats {
   receivedBytes: number;
 }
 
+/** An LLM completion stitched back together from SSE deltas, per connection.
+ *  Kept whole even after the capped log has dropped its head. */
+export interface RTStream {
+  text: string;
+  deltas: number;
+  /** completion tokens, when the stream reports them */
+  tokens?: number;
+  /** connect time — TTFT is measured from here, like an HTTP send */
+  startedAt?: number;
+  firstAt?: number;
+  lastAt?: number;
+  /** a `[DONE]` sentinel arrived */
+  done: boolean;
+}
+
 export interface RTSnapshot {
   state: RTState;
   /** WS subprotocol the server settled on */
@@ -39,6 +54,7 @@ export interface RTSnapshot {
   /** when the upstream opened — drives the "connected for" clock */
   openedAt?: number;
   stats: RTStats;
+  stream: RTStream;
   log: RealtimeMessage[];
 }
 
@@ -47,7 +63,8 @@ const LOG_CAP = 1000;
 /** Sent messages remembered for the composer's Alt+↑/↓. */
 const HISTORY_CAP = 50;
 const NO_STATS: RTStats = { sent: 0, sentBytes: 0, received: 0, receivedBytes: 0 };
-const IDLE: RTSnapshot = { state: 'idle', stats: NO_STATS, log: [] };
+const NO_STREAM: RTStream = { text: '', deltas: 0, done: false };
+const IDLE: RTSnapshot = { state: 'idle', stats: NO_STATS, stream: NO_STREAM, log: [] };
 const encoder = new TextEncoder();
 
 interface Session {
@@ -57,6 +74,7 @@ interface Session {
   /** lines and counts not yet folded into `snap` — see append() */
   pending: RealtimeMessage[];
   stats: RTStats;
+  stream: RTStream;
   flushScheduled: boolean;
   /** what was sent, oldest first — apart from the log, so Clear keeps it */
   history: string[];
@@ -73,6 +91,7 @@ function sess(tabId: string): Session {
       listeners: new Set(),
       pending: [],
       stats: { ...NO_STATS },
+      stream: { ...NO_STREAM },
       flushScheduled: false,
       history: [],
     };
@@ -125,7 +144,12 @@ function flush(s: Session): void {
   if (!s.pending.length) return;
   const log = s.snap.log.concat(s.pending);
   s.pending = [];
-  s.snap = { ...s.snap, stats: { ...s.stats }, log: log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log };
+  s.snap = {
+    ...s.snap,
+    stats: { ...s.stats },
+    stream: { ...s.stream },
+    log: log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log,
+  };
   emit(s);
 }
 
@@ -137,6 +161,16 @@ function cleanClose(code?: number): boolean {
 
 function handleFrame(tabId: string, f: RealtimeServerFrame): void {
   if (f.t === 'message') {
+    const st = sess(tabId).stream;
+    if (f.delta) {
+      const now = Date.now();
+      st.text += f.delta;
+      st.deltas++;
+      st.firstAt ??= now;
+      st.lastAt = now;
+    }
+    if (f.tokens) st.tokens = f.tokens;
+    if (!f.heartbeat && f.data.trim() === '[DONE]') st.done = true;
     append(tabId, {
       id: uid(),
       type: f.heartbeat ? 'heartbeat' : 'receive',
@@ -147,6 +181,7 @@ function handleFrame(tabId: string, f: RealtimeServerFrame): void {
       truncated: f.truncated,
       event: f.event,
       eventId: f.eventId,
+      delta: f.delta,
     });
     return;
   }
@@ -191,13 +226,15 @@ export function connect(tabId: string, spec: RealtimeSpec, vars: Record<string, 
     /* already gone */
   }
   s.stats = { ...NO_STATS };
+  s.stream = { ...NO_STREAM, startedAt: Date.now() };
   patch(tabId, {
     state: 'connecting',
     note: undefined,
     missing: undefined,
     protocol: undefined,
     openedAt: undefined,
-    stats: { ...NO_STATS },
+    stats: { ...s.stats },
+    stream: { ...s.stream },
   });
   append(tabId, line('info', `${spec.kind === 'sse' ? 'GET' : 'WS'} ${spec.url || '(no url)'}`));
 
@@ -288,6 +325,11 @@ export function destroySession(tabId: string): void {
   sessions.delete(tabId);
 }
 
+/** The current snapshot, outside React. */
+export function realtimeSnapshot(tabId: string): RTSnapshot {
+  return sess(tabId).snap;
+}
+
 export function useRealtime(tabId: string): RTSnapshot {
   const subscribe = useCallback(
     (cb: () => void) => {
@@ -299,6 +341,6 @@ export function useRealtime(tabId: string): RTSnapshot {
     },
     [tabId],
   );
-  const getSnapshot = useCallback(() => sess(tabId).snap, [tabId]);
+  const getSnapshot = useCallback(() => realtimeSnapshot(tabId), [tabId]);
   return useSyncExternalStore(subscribe, getSnapshot);
 }

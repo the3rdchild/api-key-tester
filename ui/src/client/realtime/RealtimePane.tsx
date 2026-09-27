@@ -10,7 +10,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyValueEditor } from '../KeyValueEditor.tsx';
 import { Composer } from './Composer.tsx';
 import { LogRow } from './LogRow.tsx';
-import { countByType, filterLog, LogToolbar, type LogFilter } from './LogToolbar.tsx';
+import { LogToolbar } from './LogToolbar.tsx';
+import { compactDeltas, countByType, countEvents, filterLog, type LogEntry, type LogFilter } from './logView.ts';
+import { StreamText } from './StreamText.tsx';
 import { clearLog, connect, disconnect, sendMessage, useRealtime, type RTSnapshot } from './useRealtime.ts';
 import { formatBytes } from '../../lib/format.ts';
 import { loadLocal, saveLocal } from '../../lib/storage.ts';
@@ -36,6 +38,7 @@ const STATE_STYLE: Record<string, string> = {
 };
 
 const PRETTY_KEY = 'realtime.pretty';
+const COMPACT_KEY = 'realtime.compact';
 
 export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
   const rt = tab.rt!;
@@ -58,11 +61,24 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
   };
 
   // ─── log view ─────────────────────────────────────────────────────────────
+  // SSE tabs also get a Text view: the LLM completion stitched from deltas
+  const [view, setView] = useState<'events' | 'text'>('events');
   const [filter, setFilter] = useState<LogFilter>('all');
+  const [eventName, setEventName] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [pretty, setPretty] = useState(() => loadLocal(PRETTY_KEY) !== '0');
+  const [compact, setCompact] = useState(() => loadLocal(COMPACT_KEY) !== '0');
   const counts = useMemo(() => countByType(snap.log), [snap.log]);
-  const visible = useMemo(() => filterLog(snap.log, filter, query), [snap.log, filter, query]);
+  const events = useMemo(() => (isWs ? [] : countEvents(snap.log)), [isWs, snap.log]);
+  const visible = useMemo(
+    () => filterLog(snap.log, filter, query, eventName),
+    [snap.log, filter, query, eventName],
+  );
+  const hasDeltas = snap.stream.deltas > 0;
+  const rows: LogEntry[] = useMemo(
+    () => (compact && hasDeltas ? compactDeltas(visible) : visible),
+    [compact, hasDeltas, visible],
+  );
 
   const onCopy = useCallback(
     (text: string) => {
@@ -108,15 +124,16 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
   const [unseen, setUnseen] = useState(0);
   useEffect(() => {
     const el = logRef.current;
-    const last = visible[visible.length - 1]?.id;
+    const last = rows[rows.length - 1]?.id;
     if (pinnedRef.current) {
       if (el) el.scrollTop = el.scrollHeight;
     } else if (last !== lastIdRef.current) {
-      const i = visible.findIndex((m) => m.id === lastIdRef.current);
-      setUnseen((n) => n + (i === -1 ? visible.length : visible.length - 1 - i));
+      const i = rows.findIndex((m) => m.id === lastIdRef.current);
+      setUnseen((n) => n + (i === -1 ? rows.length : rows.length - 1 - i));
     }
     lastIdRef.current = last;
-  }, [visible]);
+    // `view`: coming back from Text remounts the log at the top
+  }, [rows, view]);
 
   const onScroll = () => {
     const el = logRef.current;
@@ -257,56 +274,99 @@ export function RealtimePane({ tab, vaultKeys, onRt, onToast }: Props) {
         )}
       </div>
 
-      {/* log */}
-      <LogToolbar
-        isWs={isWs}
-        counts={counts}
-        shown={visible.length}
-        filter={filter}
-        onFilter={(f) => narrow(() => setFilter(f))}
-        query={query}
-        onQuery={(q) => narrow(() => setQuery(q))}
-        pretty={pretty}
-        onPretty={(v) => {
-          setPretty(v);
-          saveLocal(PRETTY_KEY, v ? '1' : '0');
-        }}
-        onExport={exportLog}
-        onClear={() => clearLog(tab.id)}
-      />
-      <div className="relative min-h-0 flex-1">
-        <div ref={logRef} onScroll={onScroll} className="h-full overflow-auto p-2 font-mono text-xs">
-          {visible.length === 0 ? (
-            <p className="p-4 text-center text-slate-400">
-              {snap.log.length > 0
-                ? 'No messages match this filter.'
-                : isWs
-                  ? 'Connect, then send a frame to see it here.'
-                  : 'Connect to start receiving events.'}
-            </p>
-          ) : (
-            visible.map((m, i) => (
-              <LogRow
-                key={m.id}
-                m={m}
-                prevAt={visible[i - 1]?.at}
-                pretty={pretty}
-                onCopy={onCopy}
-                onResend={isWs && snap.state === 'open' ? onResend : undefined}
-              />
-            ))
-          )}
+      {!isWs && (
+        <div role="tablist" aria-label="Stream view" className="flex shrink-0 gap-1 px-2">
+          {(['events', 'text'] as const).map((id) => (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={view === id}
+              onClick={() => {
+                pinnedRef.current = true;
+                setView(id);
+              }}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-1.5 text-xs font-medium ${
+                view === id
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              {id === 'events' ? 'Events' : 'Text'}
+              {id === 'text' && hasDeltas && (
+                <span className="ml-1 rounded bg-slate-200 px-1 text-[10px] tabular-nums dark:bg-slate-700">
+                  {snap.stream.deltas}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
-        {unseen > 0 && (
-          <button
-            type="button"
-            onClick={toBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow-lg hover:bg-indigo-700"
-          >
-            {unseen} new <i className="fa-solid fa-arrow-down ml-1" />
-          </button>
-        )}
-      </div>
+      )}
+
+      {view === 'text' && !isWs ? (
+        <StreamText stream={snap.stream} live={busy} onCopy={onCopy} />
+      ) : (
+        <>
+          {/* log */}
+          <LogToolbar
+            isWs={isWs}
+            counts={counts}
+            shown={visible.length}
+            filter={filter}
+            onFilter={(f) => narrow(() => setFilter(f))}
+            query={query}
+            onQuery={(q) => narrow(() => setQuery(q))}
+            pretty={pretty}
+            onPretty={(v) => {
+              setPretty(v);
+              saveLocal(PRETTY_KEY, v ? '1' : '0');
+            }}
+            onExport={exportLog}
+            onClear={() => clearLog(tab.id)}
+            events={events}
+            eventName={eventName}
+            onEventName={isWs ? undefined : (n) => narrow(() => setEventName(n))}
+            compact={hasDeltas ? compact : undefined}
+            onCompact={(v) => {
+              setCompact(v);
+              saveLocal(COMPACT_KEY, v ? '1' : '0');
+            }}
+          />
+          <div className="relative min-h-0 flex-1">
+            <div ref={logRef} onScroll={onScroll} className="h-full overflow-auto p-2 font-mono text-xs">
+              {rows.length === 0 ? (
+                <p className="p-4 text-center text-slate-400">
+                  {snap.log.length > 0
+                    ? 'No messages match this filter.'
+                    : isWs
+                      ? 'Connect, then send a frame to see it here.'
+                      : 'Connect to start receiving events.'}
+                </p>
+              ) : (
+                rows.map((m, i) => (
+                  <LogRow
+                    key={m.id}
+                    m={m}
+                    prevAt={rows[i - 1]?.at}
+                    pretty={pretty}
+                    onCopy={onCopy}
+                    onResend={isWs && snap.state === 'open' ? onResend : undefined}
+                  />
+                ))
+              )}
+            </div>
+            {unseen > 0 && (
+              <button
+                type="button"
+                onClick={toBottom}
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow-lg hover:bg-indigo-700"
+              >
+                {unseen} new <i className="fa-solid fa-arrow-down ml-1" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {isWs && (
         <Composer

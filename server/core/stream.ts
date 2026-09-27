@@ -49,14 +49,14 @@ export function isStreaming(res: Response): boolean {
 
 /** OpenAI-compatible streams put usage in the final chunk; Anthropic puts
  *  output_tokens on message_delta. Either beats counting SSE events. */
-function extractTokens(payload: unknown): number | undefined {
+export function extractTokens(payload: unknown): number | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const obj = payload as Record<string, any>;
   const n = obj.usage?.completion_tokens ?? obj.usage?.output_tokens;
   return typeof n === 'number' && n > 0 ? n : undefined;
 }
 
-function extractDelta(payload: unknown): string {
+export function extractDelta(payload: unknown): string {
   if (typeof payload === 'string') return payload;
   if (!payload || typeof payload !== 'object') return '';
   const obj = payload as Record<string, any>;

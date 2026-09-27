@@ -13,6 +13,7 @@
 import { chainLookups, fromRecord, interpolate, type VarLookup } from './vars.ts';
 import { resolveVaultAuth } from './vault-auth.ts';
 import { activeEnvVars } from './collections.ts';
+import { extractDelta, extractTokens } from './stream.ts';
 import type {
   RealtimeClientFrame,
   RealtimeServerFrame,
@@ -119,6 +120,23 @@ export async function buildRealtimeConnection(
   if (spec.auth?.type === 'oauth2') note = 'OAuth2 auth is not available on realtime connections yet — use a Bearer token or vault key.';
 
   return { url, headers, protocols: spec.protocols ?? [], note, missing: [...miss] };
+}
+
+/** An SSE event that looks like an LLM stream chunk (OpenAI, Anthropic, Gemini,
+ *  Ollama shapes — the same extraction the HTTP stream reader uses) carries
+ *  its text delta and any reported token count, for the realtime Text view.
+ *  Unlike the HTTP reader, plain-text payloads are *not* deltas here: a
+ *  generic event stream isn't a model talking. */
+function llmDelta(data: string): { delta?: string; tokens?: number } {
+  const t = data.trim();
+  if (t[0] !== '{') return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return {};
+  }
+  return { delta: extractDelta(parsed) || undefined, tokens: extractTokens(parsed) };
 }
 
 export interface RealtimeBridge {
@@ -275,7 +293,8 @@ export function createBridge(send: Send): RealtimeBridge {
           const at = Date.now();
           const size = Buffer.byteLength(rawEvent);
           if (dataLines.length) {
-            send({ t: 'message', data: dataLines.join('\n'), at, size, event: eventName || undefined, eventId });
+            const data = dataLines.join('\n');
+            send({ t: 'message', data, at, size, event: eventName || undefined, eventId, ...llmDelta(data) });
           } else if (comments.length) {
             send({ t: 'message', data: comments.join('\n'), at, size, heartbeat: true });
           }

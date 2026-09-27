@@ -8,7 +8,8 @@ import { memo, useMemo, useState } from 'react';
 
 import { JsonTree } from '../JsonTree.tsx';
 import { formatBytes } from '../../lib/format.ts';
-import type { RealtimeMessage, RealtimeMessageType } from '../../../../shared/collections.ts';
+import type { LogEntry } from './logView.ts';
+import type { RealtimeMessageType } from '../../../../shared/collections.ts';
 
 /** Past this, a row shows its head and a "show all" — a few 500 KB frames
  *  rendered in full would stall the log. */
@@ -21,6 +22,25 @@ const TYPE_STYLE: Record<RealtimeMessageType, { icon: string; color: string; lab
   error: { icon: 'fa-triangle-exclamation', color: 'text-red-500', label: 'error' },
   heartbeat: { icon: 'fa-heart-pulse', color: 'text-pink-400', label: 'heartbeat' },
 };
+
+// Literal class strings, so Tailwind sees every one of them.
+const EVENT_PALETTE = [
+  'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+  'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+  'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300',
+  'bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300',
+];
+
+/** The same event name always gets the same colour, in the log and its chips. */
+export function eventBadgeClass(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return EVENT_PALETTE[Math.abs(h) % EVENT_PALETTE.length]!;
+}
 
 function clock(at: number): string {
   const d = new Date(at);
@@ -48,7 +68,7 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
 }
 
 interface Props {
-  m: RealtimeMessage;
+  m: LogEntry;
   /** time of the row above, for the +Δ column */
   prevAt?: number;
   pretty: boolean;
@@ -91,6 +111,18 @@ export const LogRow = memo(function LogRow({ m, prevAt, pretty, onCopy, onResend
     );
   }
 
+  // OpenAI-style end of stream: a divider, not a message
+  if (m.type === 'receive' && m.data.trim() === '[DONE]') {
+    return (
+      <div className="flex items-center gap-2 px-1 py-0.5 text-slate-400">
+        {meta}
+        <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+        <span className="text-[10px] font-semibold uppercase tracking-wide">[DONE] · stream finished</span>
+        <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+      </div>
+    );
+  }
+
   const text = m.binary
     ? `⬡ binary · base64 ${m.data}`
     : pretty && json?.ok
@@ -102,11 +134,12 @@ export const LogRow = memo(function LogRow({ m, prevAt, pretty, onCopy, onResend
     <div className="group flex gap-2 rounded px-1 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-900">
       {meta}
       <div className="min-w-0 flex-1">
-        {(m.event || m.eventId) && (
+        {(m.event || m.eventId || m.merged) && (
           <div className="mb-0.5 flex gap-1.5 text-[10px]">
-            {m.event && (
-              <span className="rounded bg-slate-200 px-1 font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                {m.event}
+            {m.event && <span className={`rounded px-1 font-semibold ${eventBadgeClass(m.event)}`}>{m.event}</span>}
+            {m.merged && (
+              <span className="rounded border border-slate-300 px-1 text-slate-500 dark:border-slate-600" title="Consecutive LLM deltas, folded into their text">
+                {m.merged} delta{m.merged === 1 ? '' : 's'}
               </span>
             )}
             {m.eventId && <span className="text-slate-400">id {m.eventId}</span>}

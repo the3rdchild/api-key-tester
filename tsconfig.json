@@ -36,7 +36,8 @@
     "shared/**/*",
     "server/**/*",
     "ui/src/**/*",
-    "scripts/**/*"
+    "scripts/**/*",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",
