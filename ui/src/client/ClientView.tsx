@@ -9,7 +9,7 @@ import { ImportCurlDialog } from './ImportCurlDialog.tsx';
 import { SaveRequestDialog } from './SaveRequestDialog.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { RequestPane } from './RequestPane.tsx';
-import { RealtimePane } from './RealtimePane.tsx';
+import { RealtimePane } from './realtime/RealtimePane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { useClient } from './useClient.ts';
 import type { RequestSpec } from '../../../shared/collections.ts';
@@ -39,6 +39,7 @@ export function ClientView({
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
   });
   const splitRef = useRef<HTMLDivElement | null>(null);
+  const tabStripRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -46,6 +47,15 @@ export function ClientView({
   }, []);
 
   const { active } = state;
+
+  // New tabs land at the end of a strip that may be scrolled; bring whichever
+  // tab just became active into view (Alt+T, Alt+], opening from the sidebar).
+  useEffect(() => {
+    if (!state.activeId) return;
+    tabStripRef.current
+      ?.querySelector(`[data-tab-id="${CSS.escape(state.activeId)}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [state.activeId, state.tabs.length]);
 
   // ─── closed tabs ──────────────────────────────────────────────────────────
   // Kept in memory only: enough to undo a stray Alt+W, not a second history.
@@ -259,84 +269,99 @@ export function ClientView({
       <Sidebar state={state} onToast={showToast} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* request tabs */}
+        {/* request tabs. Only the tabs scroll: while they fit, the new-tab
+            buttons sit right after the last one; once they don't, the tab list
+            shrinks and scrolls and the buttons stay pinned on the right. */}
         <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-1 py-1 dark:border-slate-800 dark:bg-slate-950">
-          {state.tabs.map((tab) => {
-            const isActive = tab.id === state.activeId;
-            return (
-              <div
-                key={tab.id}
-                className={`flex shrink-0 items-center rounded ${
-                  isActive
-                    ? 'bg-white shadow-sm dark:bg-slate-900'
-                    : 'hover:bg-slate-200/60 dark:hover:bg-slate-800'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => state.setActiveId(tab.id)}
-                  aria-current={isActive ? 'true' : undefined}
-                  className="flex max-w-[14rem] items-center gap-2 py-1.5 pl-3 pr-1 text-xs"
+          <div
+            ref={tabStripRef}
+            onWheel={(e) => {
+              // a vertical wheel over the strip scrolls it sideways
+              if (e.deltaY && !e.deltaX) e.currentTarget.scrollLeft += e.deltaY;
+            }}
+            className="thin-scroll flex min-w-0 items-center gap-1 overflow-x-auto"
+          >
+            {state.tabs.map((tab) => {
+              const isActive = tab.id === state.activeId;
+              return (
+                <div
+                  key={tab.id}
+                  data-tab-id={tab.id}
+                  className={`flex shrink-0 items-center rounded ${
+                    isActive
+                      ? 'bg-white shadow-sm dark:bg-slate-900'
+                      : 'hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                  }`}
                 >
-                  <span
-                    className={`font-mono font-semibold ${tab.kind === 'http' ? 'text-slate-500' : 'text-teal-600 dark:text-teal-400'}`}
+                  <button
+                    type="button"
+                    onClick={() => state.setActiveId(tab.id)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className="flex max-w-[14rem] items-center gap-2 py-1.5 pl-3 pr-1 text-xs"
                   >
-                    {tab.kind === 'http' ? tab.spec.method : tab.kind.toUpperCase()}
-                  </span>
-                  <span className="truncate">
-                    {tab.kind === 'http'
-                      ? tab.spec.name || tab.spec.url || 'Untitled'
-                      : tab.rt?.name || tab.rt?.url || 'Untitled'}
-                  </span>
-                  {tab.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => closeTab(tab.id)}
-                  aria-label={`Close ${tab.spec.name || 'tab'}`}
-                  className="mr-1 h-6 w-6 rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
-                >
-                  <i className="fa-solid fa-xmark text-[10px]" />
-                </button>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => state.newTab()}
-            aria-label="New request tab (Alt+T)"
-            title="New request tab (Alt+T)"
-            className="h-7 w-7 shrink-0 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
-          >
-            <i className="fa-solid fa-plus text-xs" />
-          </button>
+                    <span
+                      className={`font-mono font-semibold ${tab.kind === 'http' ? 'text-slate-500' : 'text-teal-600 dark:text-teal-400'}`}
+                    >
+                      {tab.kind === 'http' ? tab.spec.method : tab.kind.toUpperCase()}
+                    </span>
+                    <span className="truncate">
+                      {tab.kind === 'http'
+                        ? tab.spec.name || tab.spec.url || 'Untitled'
+                        : tab.rt?.name || tab.rt?.url || 'Untitled'}
+                    </span>
+                    {tab.dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => closeTab(tab.id)}
+                    aria-label={`Close ${tab.spec.name || 'tab'}`}
+                    className="mr-1 h-6 w-6 rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
+                  >
+                    <i className="fa-solid fa-xmark text-[10px]" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            title="Import cURL (Alt+I)"
-            className="h-7 shrink-0 rounded px-2 text-xs text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
-          >
-            <i className="fa-solid fa-terminal text-xs" /> cURL
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => state.newTab()}
+              aria-label="New request tab (Alt+T)"
+              title="New request tab (Alt+T)"
+              className="h-7 w-7 shrink-0 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
+            >
+              <i className="fa-solid fa-plus text-xs" />
+            </button>
 
-          <span className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-slate-700" />
-          <button
-            type="button"
-            onClick={() => state.newRealtimeTab('ws')}
-            title="New WebSocket tab"
-            className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
-          >
-            <i className="fa-solid fa-bolt text-xs" /> WS
-          </button>
-          <button
-            type="button"
-            onClick={() => state.newRealtimeTab('sse')}
-            title="New Server-Sent Events tab"
-            className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
-          >
-            <i className="fa-solid fa-tower-broadcast text-xs" /> SSE
-          </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              title="Import cURL (Alt+I)"
+              className="h-7 shrink-0 rounded px-2 text-xs text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
+            >
+              <i className="fa-solid fa-terminal text-xs" /> cURL
+            </button>
+
+            <span className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-slate-700" />
+            <button
+              type="button"
+              onClick={() => state.newRealtimeTab('ws')}
+              title="New WebSocket tab"
+              className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
+            >
+              <i className="fa-solid fa-bolt text-xs" /> WS
+            </button>
+            <button
+              type="button"
+              onClick={() => state.newRealtimeTab('sse')}
+              title="New Server-Sent Events tab"
+              className="h-7 shrink-0 rounded px-2 text-xs font-medium text-teal-600 hover:bg-slate-200 dark:text-teal-400 dark:hover:bg-slate-800"
+            >
+              <i className="fa-solid fa-tower-broadcast text-xs" /> SSE
+            </button>
+          </div>
 
           <span className="ml-auto flex shrink-0 items-center gap-2 pr-2 text-[11px] text-slate-400">
             <button
@@ -361,6 +386,7 @@ export function ClientView({
           {active && active.kind !== 'http' ? (
             <div className="min-w-0 flex-1 overflow-hidden">
               <RealtimePane
+                key={active.id}
                 tab={active}
                 vaultKeys={state.vaultKeys}
                 onRt={(patch) => state.updateRealtime(active.id, patch)}

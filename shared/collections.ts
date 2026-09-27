@@ -423,15 +423,31 @@ export function emptyRealtime(id: string, kind: RealtimeKind = 'ws'): RealtimeSp
   };
 }
 
+/**
+ * What a log line is — also exactly what the log's filter chips select on.
+ * `info`/`error` are keyway's own lines (connected, closed, bad URL, …);
+ * `heartbeat` is keep-alive traffic (SSE `:` comments) that would otherwise
+ * drown the real messages.
+ */
+export type RealtimeMessageType = 'send' | 'receive' | 'info' | 'error' | 'heartbeat';
+
 /** One line in a realtime session log. */
 export interface RealtimeMessage {
   id: string;
-  dir: 'sent' | 'recv' | 'system';
+  type: RealtimeMessageType;
   /** epoch ms */
   at: number;
   data: string;
-  /** recv only: the frame was binary and `data` is its base64 */
+  /** bytes on the wire, for send/receive/heartbeat — before any truncation */
+  size?: number;
+  /** receive only: the frame was binary and `data` is its base64 */
   binary?: boolean;
+  /** receive only: the frame was larger than the proxy forwards, `data` is its head */
+  truncated?: boolean;
+  /** sse only: the event's `event:` name (absent means the default "message") */
+  event?: string;
+  /** sse only: the event's `id:` */
+  eventId?: string;
 }
 
 /** Frames the browser sends up the proxy socket. */
@@ -453,7 +469,18 @@ export type RealtimeServerFrame =
       /** {{vars}} referenced but not defined, echoed once on connect */
       missing?: string[];
     }
-  | { t: 'message'; data: string; binary?: boolean; at: number }
+  | {
+      t: 'message';
+      data: string;
+      at: number;
+      size: number;
+      binary?: boolean;
+      truncated?: boolean;
+      /** sse: a `:` comment block, i.e. keep-alive rather than an event */
+      heartbeat?: boolean;
+      event?: string;
+      eventId?: string;
+    }
   | { t: 'error'; message: string };
 
 /** The everyday verbs — anything outside this set gets a gentle "unusual method" hint. */

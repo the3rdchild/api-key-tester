@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { JsonTree } from './JsonTree.tsx';
+import { formatBytes } from '../lib/format.ts';
 import type { SendResult } from '../../../shared/collections.ts';
 
 type View = 'preview' | 'tree' | 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream';
@@ -548,10 +549,4 @@ function BinaryPreview({
 function guessFilename(mediaType?: string): string {
   const ext = (mediaType ?? '').split('/')[1]?.split('+')[0];
   return ext ? `response.${ext}` : 'response.bin';
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }

@@ -11,7 +11,7 @@ import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { api } from '../lib/api.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import { emptyRealtime, emptyRequest } from '../../../shared/collections.ts';
-import { destroySession } from './useRealtime.ts';
+import { destroySession } from './realtime/useRealtime.ts';
 import type {
   CollectionsFile,
   RealtimeKind,

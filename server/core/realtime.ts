@@ -141,12 +141,29 @@ export function createBridge(send: Send): RealtimeBridge {
     }
   };
 
+  // `size` is always the full frame, so the byte counters stay honest even
+  // when what reaches the browser is only the head of it.
   const forward = (data: string | ArrayBuffer): void => {
     if (typeof data === 'string') {
-      send({ t: 'message', data: data.length > FRAME_CAP ? data.slice(0, FRAME_CAP) : data, at: Date.now() });
+      const truncated = data.length > FRAME_CAP;
+      send({
+        t: 'message',
+        data: truncated ? data.slice(0, FRAME_CAP) : data,
+        at: Date.now(),
+        size: Buffer.byteLength(data),
+        truncated: truncated || undefined,
+      });
     } else {
-      const buf = Buffer.from(data.byteLength > FRAME_CAP ? data.slice(0, FRAME_CAP) : data);
-      send({ t: 'message', data: buf.toString('base64'), binary: true, at: Date.now() });
+      const truncated = data.byteLength > FRAME_CAP;
+      const buf = Buffer.from(truncated ? data.slice(0, FRAME_CAP) : data);
+      send({
+        t: 'message',
+        data: buf.toString('base64'),
+        binary: true,
+        at: Date.now(),
+        size: data.byteLength,
+        truncated: truncated || undefined,
+      });
     }
   };
 
@@ -229,6 +246,9 @@ export function createBridge(send: Send): RealtimeBridge {
     // Minimal SSE parser: events are separated by a blank line; we forward the
     // joined `data:` payload of each, which is what a generic SSE client wants
     // (unlike the LLM stream reader, which extracts only the model's text).
+    // `event:` and `id:` travel as their own fields so the log can badge and
+    // filter on them; a block of only `:` comments is keep-alive, forwarded as
+    // a heartbeat so it can be counted without cluttering the log.
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -242,14 +262,23 @@ export function createBridge(send: Send): RealtimeBridge {
           const rawEvent = buf.slice(0, sep);
           buf = buf.slice(sep + (buf[sep] === '\r' ? 4 : 2));
           const dataLines: string[] = [];
+          const comments: string[] = [];
           let eventName = '';
+          let eventId: string | undefined;
           for (const line of rawEvent.split(/\r?\n/)) {
             if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
             else if (line.startsWith('event:')) eventName = line.slice(6).trim();
+            else if (line.startsWith('id:')) eventId = line.slice(3).replace(/^ /, '');
+            else if (line.startsWith(':')) comments.push(line.slice(1).replace(/^ /, ''));
           }
-          if (dataLines.length === 0) continue;
-          const payload = (eventName ? `[${eventName}] ` : '') + dataLines.join('\n');
-          if (!disposed) send({ t: 'message', data: payload, at: Date.now() });
+          if (disposed) continue;
+          const at = Date.now();
+          const size = Buffer.byteLength(rawEvent);
+          if (dataLines.length) {
+            send({ t: 'message', data: dataLines.join('\n'), at, size, event: eventName || undefined, eventId });
+          } else if (comments.length) {
+            send({ t: 'message', data: comments.join('\n'), at, size, heartbeat: true });
+          }
         }
       }
       if (!disposed) send({ t: 'status', state: 'closed', reason: 'stream ended' });
