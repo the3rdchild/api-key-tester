@@ -7,6 +7,7 @@ import { ImportCollectionDialog } from './ImportCollectionDialog.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { loadLocal, saveLocal } from '../lib/storage.ts';
 import { clientApi } from '../lib/clientApi.ts';
+import { historySide, openCompare } from './compare.ts';
 import type {
   CollectionsFile,
   EnvironmentDef,
@@ -63,8 +64,28 @@ export function Sidebar({ state, onToast }: Props) {
     history: true,
   });
   const file = state.collections;
+  /** the first of two history entries picked for a compare */
+  const [compareMark, setCompareMark] = useState<ReqHistoryEntry | null>(null);
 
   const toggle = (panel: Panel) => setOpen((prev) => ({ ...prev, [panel]: !prev[panel] }));
+
+  /** First pick marks A; the second opens the compare, older entry as A. */
+  const pickForCompare = async (entry: ReqHistoryEntry) => {
+    if (!compareMark) {
+      setCompareMark(entry);
+      onToast('Now pick the entry to compare it with');
+      return;
+    }
+    setCompareMark(null);
+    if (compareMark.id === entry.id) return;
+    const [older, newer] = Date.parse(compareMark.ts) <= Date.parse(entry.ts) ? [compareMark, entry] : [entry, compareMark];
+    try {
+      const [a, b] = await Promise.all([historySide(older), historySide(newer)]);
+      openCompare(a, b);
+    } catch (e) {
+      onToast(`Compare failed: ${e instanceof Error ? e.message : e}`);
+    }
+  };
 
   // The command palette can ask for the import dialog without importing it.
   useEffect(() => {
@@ -172,7 +193,14 @@ export function Sidebar({ state, onToast }: Props) {
             <p className="px-2 py-3 text-xs text-slate-400">No requests sent yet.</p>
           ) : (
             groupHistory(state.history).map((group) => (
-              <HistoryGroup key={group.key} group={group} state={state} onToast={onToast} />
+              <HistoryGroup
+                key={group.key}
+                group={group}
+                state={state}
+                onToast={onToast}
+                compareMark={compareMark?.id}
+                onCompare={(entry) => void pickForCompare(entry)}
+              />
             ))
           )}
         </div>
@@ -570,15 +598,23 @@ function groupByDay(entries: ReqHistoryEntry[]): DayGroup[] {
   return [...groups.values()];
 }
 
+interface CompareProps {
+  /** id of the entry already picked as A, if any */
+  compareMark?: string;
+  onCompare: (entry: ReqHistoryEntry) => void;
+}
+
 function HistoryGroup({
   group,
   state,
   onToast,
+  compareMark,
+  onCompare,
 }: {
   group: DayGroup;
   state: ClientState;
   onToast: (msg: string) => void;
-}) {
+} & CompareProps) {
   const [open, setOpen] = useState(true);
   const pinned = group.entries.filter((e) => e.pinned).length;
 
@@ -605,7 +641,14 @@ function HistoryGroup({
 
       {open &&
         group.entries.map((entry) => (
-          <HistoryRow key={entry.id} entry={entry} state={state} onToast={onToast} />
+          <HistoryRow
+            key={entry.id}
+            entry={entry}
+            state={state}
+            onToast={onToast}
+            compareMark={compareMark}
+            onCompare={onCompare}
+          />
         ))}
     </div>
   );
@@ -615,11 +658,14 @@ function HistoryRow({
   entry,
   state,
   onToast,
+  compareMark,
+  onCompare,
 }: {
   entry: ReqHistoryEntry;
   state: ClientState;
   onToast: (msg: string) => void;
-}) {
+} & CompareProps) {
+  const marked = compareMark === entry.id;
   const time = new Date(entry.ts).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
@@ -627,7 +673,11 @@ function HistoryRow({
   const rt = entry.realtime;
 
   return (
-    <div className="group relative flex items-center gap-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+    <div
+      className={`group relative flex items-center gap-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 ${
+        marked ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-400 dark:bg-indigo-950/40' : ''
+      }`}
+    >
       <button
         type="button"
         onClick={() => void state.openFromHistory(entry)}
@@ -647,6 +697,11 @@ function HistoryRow({
           <span className="min-w-0 flex-1 truncate">{entry.url}</span>
         </span>
         <span className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap pl-12 text-[10px] text-slate-400">
+          {marked && (
+            <span className="rounded bg-indigo-600 px-1 font-mono text-[9px] font-bold text-white" title="Picked for a compare">
+              A
+            </span>
+          )}
           {entry.pinned && <i className="fa-solid fa-thumbtack text-[8px] text-amber-500" />}
           <span>{time}</span>
           {entry.latencyMs != null && <span>· {entry.latencyMs} ms</span>}
@@ -696,6 +751,20 @@ function HistoryRow({
             onToast(entry.pinned ? 'Unpinned' : 'Pinned');
           }}
         />
+        {/* realtime sessions have a transcript, not a response to compare */}
+        {!entry.kind && (
+          <MiniButton
+            icon="fa-code-compare"
+            label={
+              marked
+                ? 'Cancel the compare'
+                : compareMark
+                  ? 'Compare with the entry marked A'
+                  : 'Compare with another entry… (pick this one, then the other)'
+            }
+            onClick={() => onCompare(entry)}
+          />
+        )}
         <MiniButton
           icon="fa-copy"
           label="Copy URL"

@@ -333,6 +333,9 @@ export interface MatrixTarget {
 }
 
 export interface MatrixItem {
+  /** within its run; the whole response is fetched by it for a compare.
+   *  Absent when the cell never got a response to keep. */
+  id?: string;
   label: string;
   keyId?: string;
   model?: string;

@@ -18,6 +18,7 @@ import type {
   MatrixSummary,
   MatrixTarget,
   RequestSpec,
+  SendResult,
 } from '../../shared/collections.ts';
 
 const DEFAULT_CONCURRENCY = 3;
@@ -35,6 +36,13 @@ export function setMatrixEmitter(fn: Emitter): void {
 
 let running: MatrixSummary | null = null;
 let lastRun: MatrixSummary | null = null;
+/** Whole responses of the latest run, by cell id — the table only carries a
+ *  preview, and comparing two providers needs the rest. One run's worth. */
+let cells: { runId: string; results: Map<string, SendResult> } | null = null;
+
+export function matrixCell(runId: string, cellId: string): SendResult | undefined {
+  return cells?.runId === runId ? cells.results.get(cellId) : undefined;
+}
 
 export function currentMatrix(): MatrixSummary | null {
   return running;
@@ -75,6 +83,8 @@ export async function runMatrix(opts: MatrixOptions): Promise<MatrixSummary> {
     items: [],
   };
   running = summary;
+  cells = { runId: summary.id, results: new Map() };
+  const results = cells.results;
   emit({ type: 'started', run: summary });
 
   const queue = [...opts.targets];
@@ -99,11 +109,14 @@ export async function runMatrix(opts: MatrixOptions): Promise<MatrixSummary> {
       };
 
       let item: MatrixItem;
+      const id = nanoid(6);
       try {
         const outcome = await sendRequest(spec, { vars });
         const r = outcome.result;
+        results.set(id, r);
         const text = r.streamText || r.body;
         item = {
+          id,
           label,
           keyId: target.keyId,
           model: target.model,
@@ -117,6 +130,7 @@ export async function runMatrix(opts: MatrixOptions): Promise<MatrixSummary> {
           preview: text ? text.slice(0, PREVIEW_CHARS) : undefined,
         };
       } catch (e) {
+        // no response was kept, so no id to fetch one by
         item = { label, keyId: target.keyId, model: target.model, ok: false, error: String(e) };
       }
 

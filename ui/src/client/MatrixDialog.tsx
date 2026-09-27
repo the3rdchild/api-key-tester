@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { matrixSide, openCompare } from './compare.ts';
 import type { MatrixItem, RequestSpec } from '../../../shared/collections.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 
@@ -34,6 +35,9 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
   const [modelsText, setModelsText] = useState('');
   const [concurrency, setConcurrency] = useState(3);
   const [items, setItems] = useState<MatrixItem[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
+  /** cells ticked for a compare, oldest pick first; a third pick drops the first */
+  const [picked, setPicked] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [total, setTotal] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
@@ -50,10 +54,17 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
   useEffect(() => {
     if (!open) return;
     fetch('/api/matrix/status')
-      .then((r) => r.json() as Promise<{ current: { items: MatrixItem[]; total: number } | null; last: { items: MatrixItem[]; total: number } | null }>)
+      .then(
+        (r) =>
+          r.json() as Promise<{
+            current: { id: string; items: MatrixItem[]; total: number } | null;
+            last: { id: string; items: MatrixItem[]; total: number } | null;
+          }>,
+      )
       .then(({ current, last }) => {
         const run = current ?? last;
         if (!run) return;
+        setRunId(run.id);
         setItems(run.items);
         setTotal(run.total);
         setRunning(!!current);
@@ -68,8 +79,10 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
     wsRef.current = ws;
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(ev.data as string) as { type: string; item?: MatrixItem; run?: { total: number } };
+        const msg = JSON.parse(ev.data as string) as { type: string; item?: MatrixItem; run?: { id: string; total: number } };
         if (msg.type === 'matrix:started' && msg.run) {
+          setRunId(msg.run.id);
+          setPicked([]);
           setItems([]);
           setRunning(true);
           setTotal(msg.run.total);
@@ -92,6 +105,20 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
       else next.add(id);
       return next;
     });
+
+  const pick = (id: string) =>
+    setPicked((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id].slice(-2)));
+
+  const compare = async () => {
+    const [a, b] = picked.map((id) => items.find((it) => it.id === id));
+    if (!runId || !a || !b) return;
+    try {
+      const [left, right] = await Promise.all([matrixSide(runId, a), matrixSide(runId, b)]);
+      openCompare(left, right);
+    } catch (e) {
+      onToast(`Compare failed: ${e instanceof Error ? e.message : e}`);
+    }
+  };
 
   const run = async () => {
     const targets =
@@ -232,6 +259,18 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                   <tr className="text-[11px] uppercase tracking-wide text-slate-400">
+                    <th className="w-8 pl-3">
+                      <button
+                        type="button"
+                        onClick={() => void compare()}
+                        disabled={picked.length !== 2}
+                        title={picked.length === 2 ? 'Compare the two ticked cells' : 'Tick two cells to compare their responses'}
+                        aria-label="Compare the two ticked cells"
+                        className="h-6 w-6 rounded text-indigo-600 hover:bg-slate-200 disabled:text-slate-300 disabled:hover:bg-transparent dark:text-indigo-400 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
+                      >
+                        <i className="fa-solid fa-code-compare" />
+                      </button>
+                    </th>
                     <th className="px-3 py-2">Target</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2 text-right">Latency</th>
@@ -244,7 +283,18 @@ export function MatrixDialog({ open, spec, vaultKeys, onClose, onToast }: Props)
                   {[...items]
                     .sort((a, b) => (a.latencyMs ?? 1e9) - (b.latencyMs ?? 1e9))
                     .map((item, i) => (
-                      <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
+                      <tr key={item.id ?? i} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="pl-3">
+                          {item.id && !running && (
+                            <input
+                              type="checkbox"
+                              checked={picked.includes(item.id)}
+                              onChange={() => pick(item.id!)}
+                              aria-label={`Pick ${item.label} for a compare`}
+                              className="accent-indigo-600"
+                            />
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <i
                             className={`fa-solid mr-2 ${

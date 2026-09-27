@@ -1,14 +1,21 @@
 // Request/response UI pieces that aren't realtime: the GraphQL helpers behind
-// the body editor, and the timing (redirect waterfall) view.
+// the body editor, the timing (redirect waterfall) view, and the compare dialog.
 
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { CompareDialog, bodyOf } from '../ui/src/client/CompareDialog.tsx';
 import { TimingView } from '../ui/src/client/TimingView.tsx';
 import { graphqlFromJson, operationNames } from '../ui/src/lib/graphql.ts';
 import type { SendResult } from '../shared/collections.ts';
 
-const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&amp;/g, '&');
+const text = (html: string) =>
+  html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, '&');
 
 describe('graphql helpers', () => {
   test('operationNames finds each named operation once, skipping fragments', () => {
@@ -89,5 +96,64 @@ describe('TimingView', () => {
     const html = view({ redirects: [{ status: 301, from: 'https://a.test/x', to: 'https://a.test/y' }] });
     expect(html).toContain('301 a.test/x');
     expect(html).toContain('recorded before per-hop timing existed');
+  });
+});
+
+describe('CompareDialog', () => {
+  const res = (body: string, patch: Partial<SendResult> = {}): SendResult => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: { 'content-type': 'application/json', date: 'Mon' },
+    body,
+    truncated: false,
+    size: body.length,
+    latencyMs: 100,
+    ttfbMs: 80,
+    redirects: [],
+    setCookies: [],
+    ...patch,
+  });
+  const dialog = (a: SendResult, b: SendResult) =>
+    renderToStaticMarkup(
+      <CompareDialog left={{ label: 'Previous', detail: '10:00', result: a }} right={{ label: 'Now', result: b }} onClose={() => {}} />,
+    );
+
+  test('JSON: a change list by path, per-call noise ignored and counted', () => {
+    const html = text(
+      dialog(
+        res('{"id":"a","model":"x","data":[1,2]}'),
+        res('{"id":"b","model":"y","data":[1]}', { status: 201, latencyMs: 150, headers: { 'content-type': 'application/json', date: 'Tue', server: 'z' } }),
+      ),
+    );
+    expect(html).toContain('Status 200 → 201');
+    expect(html).toContain('Latency 100 ms → 150 ms (+50%)');
+    expect(html).toContain('Body 2'); // $.model and $.data.1 — $.id is ignored by default
+    expect(html).toContain('Headers 1'); // server; date is ignored by default
+    expect(html).toContain('changed $.model');
+    expect(html).toContain('"x" "y"');
+    expect(html).toContain('removed $.data.1');
+    expect(html).toContain('1 ignored');
+    expect(html).not.toContain('$.id');
+  });
+
+  test('identical JSON says so', () => {
+    expect(text(dialog(res('{"a":1}'), res('{"a":1}')))).toContain('No differences');
+  });
+
+  test('text bodies fall back to a line diff', () => {
+    const html = text(dialog(res('line one\nline two', { headers: {} }), res('line one\nline 2', { headers: {} })));
+    expect(html).toContain('compared line by line');
+    expect(html).toContain('− line two');
+    expect(html).toContain('+ line 2');
+  });
+
+  test('a streamed response is compared by its stitched text', () => {
+    expect(bodyOf(res('data: {...}', { streamText: 'Hello' }))).toMatchObject({ text: 'Hello', streamed: true });
+  });
+
+  test('binary bodies: same or not, never a hex diff', () => {
+    const html = text(dialog(res('AAAA', { bodyEncoding: 'base64', size: 3 }), res('AAAB', { bodyEncoding: 'base64', size: 3 })));
+    expect(html).toContain('they differ');
   });
 });

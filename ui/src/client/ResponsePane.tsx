@@ -21,9 +21,11 @@ interface Props {
   liveStream?: string;
   /** set when this response was restored from history rather than just sent */
   historical?: { id: string; ts: string };
+  /** compare with this request's previous response; absent when there is none */
+  onCompare?: () => void;
 }
 
-export function ResponsePane({ result, error, sending, liveStream, historical }: Props) {
+export function ResponsePane({ result, error, sending, liveStream, historical, onCompare }: Props) {
   const [view, setView] = useState<View>('pretty');
   const streaming = !!result?.stream;
   const binary = result?.bodyEncoding === 'base64';
@@ -278,6 +280,16 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
               </span>
             )}
             <div className="ml-auto flex items-center gap-1">
+              <IconButton
+                icon="fa-code-compare"
+                label={
+                  onCompare
+                    ? 'Compare with the previous response of this request'
+                    : 'Compare: no earlier response of this request in the history yet — or pick two entries in the History panel'
+                }
+                onClick={() => onCompare?.()}
+                disabled={!onCompare}
+              />
               <IconButton icon="fa-copy" label="Copy body" onClick={() => copy(result.body)} />
               <IconButton icon="fa-download" label="Download body" onClick={download} />
               <IconButton
@@ -496,10 +508,12 @@ function IconButton({
   icon,
   label,
   onClick,
+  disabled,
 }: {
   icon: string;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -507,7 +521,8 @@ function IconButton({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className="h-8 w-8 rounded text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+      disabled={disabled}
+      className="h-8 w-8 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
     >
       <i className={`fa-solid ${icon}`} />
     </button>

@@ -120,6 +120,9 @@ export const clientApi = {
 
   historyDetail: (id: string) =>
     fetch(`${BASE}/history/${id}`).then((r) => json<HistoryDetail>(r)),
+  /** one matrix cell's whole response (only the latest run is kept) */
+  matrixCell: (runId: string, cellId: string) =>
+    fetch(`/api/matrix/${runId}/cells/${cellId}`).then((r) => json<SendResult>(r)),
   /** the same endpoint, for an entry whose `kind` says it was a WS/SSE session */
   realtimeHistoryDetail: (id: string) =>
     fetch(`${BASE}/history/${id}`).then((r) => json<RealtimeHistoryDetail>(r)),

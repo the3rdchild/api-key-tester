@@ -2,7 +2,7 @@
 // top. Layout is fixed - sending never moves anything around - and the divider
 // between request and response is draggable, its position remembered.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CommandPalette, type PaletteCommand } from './CommandPalette.tsx';
 import { ImportCurlDialog } from './ImportCurlDialog.tsx';
@@ -12,6 +12,8 @@ import { RequestPane } from './RequestPane.tsx';
 import { RealtimePane } from './realtime/RealtimePane.tsx';
 import { ResponsePane } from './ResponsePane.tsx';
 import { CodeGenDialog } from './CodeGenDialog.tsx';
+import { CompareDialog } from './CompareDialog.tsx';
+import { COMPARE_EVENT, historySide, openCompare, type CompareRequest } from './compare.ts';
 import { useClient } from './useClient.ts';
 import type { RequestSpec } from '../../../shared/collections.ts';
 import { clientApi } from '../lib/clientApi.ts';
@@ -36,6 +38,8 @@ export function ClientView({
   const [saveOpen, setSaveOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [codegenOpen, setCodegenOpen] = useState(false);
+  /** keyed, so a new compare while one is open starts fresh */
+  const [compare, setCompare] = useState<(CompareRequest & { key: number }) | null>(null);
   const [split, setSplit] = useState<number>(() => {
     const saved = Number(loadLocal(SPLIT_KEY));
     return Number.isFinite(saved) && saved >= 0.2 && saved <= 0.8 ? saved : 0.5;
@@ -58,6 +62,41 @@ export function ClientView({
       ?.querySelector(`[data-tab-id="${CSS.escape(state.activeId)}"]`)
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [state.activeId, state.tabs.length]);
+
+  // ─── compare ──────────────────────────────────────────────────────────────
+  // The sidebar, the matrix and the response pane all ask for a compare by
+  // event; the dialog lives here.
+  useEffect(() => {
+    const onCompare = (e: Event) => setCompare({ ...(e as CustomEvent<CompareRequest>).detail, key: Date.now() });
+    window.addEventListener(COMPARE_EVENT, onCompare);
+    return () => window.removeEventListener(COMPARE_EVENT, onCompare);
+  }, []);
+
+  /** The same request's response before this one, from the history. */
+  const previousEntry = useMemo(
+    () =>
+      active?.kind === 'http' && active.result
+        ? state.history.find((e) => !e.kind && e.requestId === active.spec.id && e.id !== active.historyId)
+        : undefined,
+    [active, state.history],
+  );
+
+  const compareWithPrevious = useCallback(async () => {
+    if (!active?.result || !previousEntry) return;
+    try {
+      const before = await historySide(previousEntry);
+      openCompare(
+        { ...before, label: `Previous · ${before.label}` },
+        {
+          label: `This response · ${active.spec.name || active.spec.url}`,
+          detail: active.historical ? new Date(active.historical.ts).toLocaleString() : 'just now',
+          result: active.result,
+        },
+      );
+    } catch (e) {
+      showToast(`Compare failed: ${e instanceof Error ? e.message : e}`);
+    }
+  }, [active, previousEntry, showToast]);
 
   // ─── closed tabs ──────────────────────────────────────────────────────────
   // Kept in memory only: enough to undo a stray Alt+W, not a second history.
@@ -424,6 +463,7 @@ export function ClientView({
                   sending={active.sending}
                   liveStream={active.streamText}
                   historical={active.historical}
+                  onCompare={previousEntry ? () => void compareWithPrevious() : undefined}
                 />
               </div>
             </>
@@ -472,6 +512,10 @@ export function ClientView({
         onClose={() => setCodegenOpen(false)}
         onToast={showToast}
       />
+
+      {compare && (
+        <CompareDialog key={compare.key} left={compare.left} right={compare.right} onClose={() => setCompare(null)} />
+      )}
 
       {toast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-slate-700">

@@ -1,7 +1,8 @@
 // sendRequest against a local server: GraphQL bodies (POST and GET), and the
 // redirect chain — per-hop timing, 303 turning into GET, and credentials that
 // must not follow a redirect to another origin. Plus GraphQL through the
-// importers, the .http export and the code generator.
+// importers, the .http export and the code generator, and the matrix keeping
+// whole responses for a compare.
 
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,9 @@ import type { CollectionsFile, RequestSpec } from '../shared/collections.ts';
 const DATA = mkdtempSync(join(tmpdir(), 'keyway-send-'));
 mock.module('../server/core/store.ts', () => ({ ROOT_DIR: DATA, getAllKeys: async () => [] }));
 mock.module('../server/core/script.ts', () => ({ runScript: async () => ({}) }));
+mock.module('../server/core/collections.ts', () => ({ activeEnvVars: async () => ({}) }));
 const { sendRequest, toCode } = await import('../server/core/send.ts');
+const { matrixCell, runMatrix } = await import('../server/core/matrix.ts');
 const { importPostman } = await import('../server/core/import/postman.ts');
 const { importInsomnia } = await import('../server/core/import/insomnia.ts');
 const { toHttpFile } = await import('../server/core/export-collection.ts');
@@ -231,5 +234,26 @@ describe('redirects', () => {
     expect(result.status).toBe(301);
     expect(result.redirects).toEqual([]);
     expect(result.redirectMs).toBeUndefined();
+  });
+});
+
+// ─── matrix ─────────────────────────────────────────────────────────────────
+
+describe('matrix', () => {
+  test('keeps each cell\'s whole response, for the latest run only', async () => {
+    const spec = req({ url: '{{baseURL}}/echo' });
+    const first = await runMatrix({ spec, targets: [{ baseURL: base, label: 'one' }, { baseURL: base, label: 'two' }] });
+    expect(first.items.map((i) => i.label).sort()).toEqual(['one', 'two']);
+    for (const item of first.items) {
+      expect(item.id).toBeString();
+      const cell = matrixCell(first.id, item.id!);
+      expect(cell?.status).toBe(200);
+      expect(JSON.parse(cell!.body).path).toBe('/echo');
+    }
+    expect(matrixCell('not-a-run', first.items[0]!.id!)).toBeUndefined();
+
+    const second = await runMatrix({ spec, targets: [{ baseURL: base, label: 'three' }] });
+    expect(matrixCell(first.id, first.items[0]!.id!)).toBeUndefined();
+    expect(matrixCell(second.id, second.items[0]!.id!)?.status).toBe(200);
   });
 });

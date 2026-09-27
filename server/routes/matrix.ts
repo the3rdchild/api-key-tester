@@ -2,7 +2,7 @@
 
 import { Hono } from 'hono';
 
-import { currentMatrix, lastMatrix, runMatrix } from '../core/matrix.ts';
+import { currentMatrix, lastMatrix, matrixCell, runMatrix } from '../core/matrix.ts';
 import type { MatrixTarget, RequestSpec } from '../../shared/collections.ts';
 
 export const matrixRouter = new Hono();
@@ -28,3 +28,9 @@ matrixRouter.post('/run', async (c) => {
 });
 
 matrixRouter.get('/status', (c) => c.json({ current: currentMatrix(), last: lastMatrix() }));
+
+/** GET /api/matrix/:runId/cells/:cellId - one cell's whole response, for a compare. */
+matrixRouter.get('/:runId/cells/:cellId', (c) => {
+  const result = matrixCell(c.req.param('runId'), c.req.param('cellId'));
+  return result ? c.json(result) : c.json({ error: 'That run is no longer the latest one' }, 404);
+});
