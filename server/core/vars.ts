@@ -87,6 +87,12 @@ export function interpolateSpec(
     body.text = t.out;
   }
   if (body.form) body.form = rows(body.form, lookup, missing);
+  if (body.graphql) {
+    const q = interpolate(body.graphql.query, lookup);
+    const v = interpolate(body.graphql.variables ?? '', lookup);
+    for (const m of [...q.missing, ...v.missing]) missing.add(m);
+    body.graphql = { ...body.graphql, query: q.out, variables: v.out };
+  }
   if (body.multipart) {
     body.multipart = body.multipart.map((row) => {
       if (row.type !== 'text') return row;

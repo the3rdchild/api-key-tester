@@ -7,12 +7,14 @@ import { useState } from 'react';
 
 import { AssertionEditor } from './AssertionEditor.tsx';
 import { CodeEditor } from './CodeEditor.tsx';
+import { GraphQLEditor } from './GraphQLEditor.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { MultipartEditor } from './MultipartEditor.tsx';
 import { MatrixDialog } from './MatrixDialog.tsx';
 import { MethodPicker } from './MethodPicker.tsx';
 import { OAuth2Editor } from './OAuth2Editor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
+import { graphqlFromJson } from '../lib/graphql.ts';
 import { STANDARD_METHODS } from '../../../shared/collections.ts';
 import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
@@ -25,6 +27,7 @@ const BODY_MODES: { id: BodyMode; label: string }[] = [
   { id: 'json', label: 'JSON' },
   { id: 'text', label: 'Text' },
   { id: 'xml', label: 'XML' },
+  { id: 'graphql', label: 'GraphQL' },
   { id: 'form', label: 'Form URL-encoded' },
   { id: 'multipart', label: 'Multipart / file' },
 ];
@@ -241,7 +244,15 @@ export function RequestPane({
               <select
                 id="body-mode"
                 value={spec.body.mode}
-                onChange={(e) => onSpec({ body: { ...spec.body, mode: e.target.value as BodyMode } })}
+                onChange={(e) => {
+                  const mode = e.target.value as BodyMode;
+                  // a JSON body that already is a GraphQL request comes along
+                  const graphql =
+                    mode === 'graphql'
+                      ? (spec.body.graphql ?? graphqlFromJson(spec.body.text) ?? { query: '', variables: '' })
+                      : spec.body.graphql;
+                  onSpec({ body: { ...spec.body, mode, graphql } });
+                }}
                 className="h-8 rounded border border-slate-300 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-800"
               >
                 {BODY_MODES.map((m) => (
@@ -250,6 +261,11 @@ export function RequestPane({
                   </option>
                 ))}
               </select>
+              {spec.body.mode === 'graphql' && method === 'GET' && (
+                <span className="text-[11px] text-slate-400" title="GraphQL over GET: for persisted or CDN-cached queries">
+                  GET sends it as <code className="font-mono">?query=&amp;variables=</code>
+                </span>
+              )}
               {spec.body.mode === 'json' && (
                 <button
                   type="button"
@@ -275,6 +291,13 @@ export function RequestPane({
                   placeholder={spec.body.mode === 'json' ? '{\n  "key": "value"\n}' : ''}
                 />
               </div>
+            )}
+
+            {spec.body.mode === 'graphql' && (
+              <GraphQLEditor
+                value={spec.body.graphql ?? { query: '', variables: '' }}
+                onChange={(graphql) => onSpec({ body: { ...spec.body, graphql } })}
+              />
             )}
 
             {spec.body.mode === 'form' && (

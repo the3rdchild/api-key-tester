@@ -113,13 +113,18 @@ export function ClientView({
 
   const formatBody = useCallback(() => {
     if (!active || active.kind !== 'http') return;
+    const { body } = active.spec;
     try {
-      const parsed = JSON.parse(active.spec.body.text ?? '');
-      state.updateSpec(active.id, {
-        body: { ...active.spec.body, text: JSON.stringify(parsed, null, 2) },
-      });
+      // GraphQL: the query isn't JSON, its variables are
+      if (body.mode === 'graphql') {
+        const variables = JSON.stringify(JSON.parse(body.graphql?.variables ?? ''), null, 2);
+        state.updateSpec(active.id, { body: { ...body, graphql: { query: '', ...body.graphql, variables } } });
+        return;
+      }
+      const parsed = JSON.parse(body.text ?? '');
+      state.updateSpec(active.id, { body: { ...body, text: JSON.stringify(parsed, null, 2) } });
     } catch {
-      showToast('Body is not valid JSON');
+      showToast(body.mode === 'graphql' ? 'Variables are not valid JSON' : 'Body is not valid JSON');
     }
   }, [active, state, showToast]);
 

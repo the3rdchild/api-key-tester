@@ -101,7 +101,37 @@ function buildUrl(spec: RequestSpec): URL {
     if (!row.enabled || !row.key) continue;
     url.searchParams.append(row.key, row.value);
   }
+  // GraphQL over GET (persisted queries, CDN-cached reads): the request object
+  // travels as query params instead of a body.
+  if (spec.body.mode === 'graphql' && spec.method.toUpperCase() === 'GET') {
+    const { payload } = graphqlRequest(spec);
+    url.searchParams.set('query', payload.query);
+    if (payload.variables !== undefined) url.searchParams.set('variables', JSON.stringify(payload.variables));
+    if (payload.operationName) url.searchParams.set('operationName', payload.operationName);
+  }
   return url;
+}
+
+interface GraphQLPayload {
+  query: string;
+  variables?: unknown;
+  operationName?: string;
+}
+
+/** The GraphQL-over-HTTP request object. Variables are typed as JSON text; a
+ *  typo there is a send error, never variables quietly left out. */
+function graphqlRequest(spec: RequestSpec): { payload: GraphQLPayload; error?: string } {
+  const g = spec.body.graphql ?? { query: '' };
+  const payload: GraphQLPayload = { query: g.query };
+  const raw = g.variables?.trim();
+  if (g.operationName?.trim()) payload.operationName = g.operationName.trim();
+  if (!raw) return { payload };
+  try {
+    payload.variables = JSON.parse(raw);
+    return { payload };
+  } catch (e) {
+    return { payload, error: `GraphQL variables are not valid JSON: ${e instanceof Error ? e.message : e}` };
+  }
 }
 
 function applyAuth(spec: RequestSpec, headers: Headers): void {
@@ -153,6 +183,11 @@ function buildBody(spec: RequestSpec, files?: Map<string, File[]>): BuiltBody {
       preview: text,
       replayable: true,
     };
+  }
+
+  if (mode === 'graphql') {
+    const text = JSON.stringify(graphqlRequest(spec).payload);
+    return { body: text, contentType: 'application/json', preview: text, replayable: true };
   }
 
   if (mode === 'multipart') {
@@ -207,6 +242,10 @@ export async function sendRequest(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { result: errorResult('Only http/https URLs are allowed', 0), sentHeaders: {}, missing };
   }
+  if (spec.body.mode === 'graphql') {
+    const { error } = graphqlRequest(spec);
+    if (error) return { result: errorResult(error, 0), sentHeaders: {}, missing, note: vault?.note };
+  }
 
   // ─── OAuth2 ───────────────────────────────────────────────────────────────
   // Resolved before anything is sent: an expired token is refreshed here, and
@@ -256,6 +295,13 @@ export async function sendRequest(
   if (built.contentType && !headers.has('Content-Type')) {
     headers.set('Content-Type', built.contentType);
   }
+
+  // Credentials this send carries. A redirect to another origin doesn't get
+  // them — what browsers and curl -L do — or a server could bounce the vault's
+  // API key to whatever host it likes.
+  const credentialHeaders = new Set(['authorization', 'proxy-authorization', 'cookie']);
+  if (spec.auth?.type === 'header' && spec.auth.headerName) credentialHeaders.add(spec.auth.headerName.toLowerCase());
+  if (vault) for (const k of Object.keys(vault.headers)) credentialHeaders.add(k.toLowerCase());
 
   const settings = spec.settings ?? { timeoutMs: 30_000, followRedirects: true, maxRedirects: 5, useCookieJar: true };
   const ctrl = new AbortController();
@@ -318,6 +364,7 @@ export async function sendRequest(
         else headers.delete('Cookie');
       }
 
+      const hopStart = Date.now();
       const res = await fetch(current.toString(), {
         method,
         headers,
@@ -325,6 +372,7 @@ export async function sendRequest(
         signal: ctrl.signal,
         redirect: 'manual',
       });
+      const hopMs = Date.now() - hopStart;
 
       const hopCookies = readSetCookies(res.headers);
       if (hopCookies.length) {
@@ -384,6 +432,7 @@ export async function sendRequest(
           latencyMs: Date.now() - started,
           ttfbMs,
           redirects,
+          redirectMs: redirects.length ? hopStart - started : undefined,
           setCookies,
           stream,
           streamText,
@@ -445,7 +494,26 @@ export async function sendRequest(
       }
 
       const next = new URL(location, current);
-      redirects.push({ status: res.status, from: current.toString(), to: next.toString() });
+      const dropped: string[] = [];
+      if (next.origin !== current.origin) {
+        for (const name of [...headers.keys()]) {
+          if (!credentialHeaders.has(name)) continue;
+          headers.delete(name);
+          // the jar picks the new host's own cookies, so that's no loss to report
+          if (!(name === 'cookie' && settings.useCookieJar)) dropped.push(name);
+        }
+      }
+      redirects.push({
+        status: res.status,
+        from: current.toString(),
+        to: next.toString(),
+        method,
+        startMs: hopStart - started,
+        ms: hopMs,
+        dropped: dropped.length ? dropped : undefined,
+      });
+      // nobody reads a redirect's body; release the connection
+      void res.body?.cancel().catch(() => {});
 
       // 303, and 301/302 after a POST, turn into GET without a body - the
       // behaviour every browser implements. 307/308 keep method and body.

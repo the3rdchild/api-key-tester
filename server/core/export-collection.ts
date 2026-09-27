@@ -163,6 +163,11 @@ function postmanBody(spec: RequestSpec, warnings: string[]): unknown {
         raw: body.text ?? '',
         options: { raw: { language: body.mode === 'json' ? 'json' : body.mode } },
       };
+    case 'graphql':
+      return {
+        mode: 'graphql',
+        graphql: { query: body.graphql?.query ?? '', variables: body.graphql?.variables ?? '' },
+      };
     case 'form':
       return {
         mode: 'urlencoded',
@@ -288,6 +293,19 @@ export function toHttpFile(file: CollectionsFile, folderId?: string): ExportResu
       }
       if (spec.body.mode === 'json' || spec.body.mode === 'text' || spec.body.mode === 'xml') {
         out.push('', spec.body.text ?? '');
+      } else if (spec.body.mode === 'graphql') {
+        // as the plain JSON request object, which every .http client can send
+        const g = spec.body.graphql ?? { query: '' };
+        let variables: unknown;
+        try {
+          variables = g.variables?.trim() ? JSON.parse(g.variables) : undefined;
+        } catch {
+          warnings.push(`"${spec.name}": GraphQL variables are not valid JSON and were left out.`);
+        }
+        if (!spec.headers.some((h) => h.enabled && h.key.toLowerCase() === 'content-type')) {
+          out.push('Content-Type: application/json');
+        }
+        out.push('', JSON.stringify({ query: g.query, variables, operationName: g.operationName || undefined }, null, 2));
       } else if (spec.body.mode === 'form') {
         out.push(
           '',

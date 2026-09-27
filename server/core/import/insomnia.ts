@@ -6,7 +6,7 @@
 import { nanoid } from 'nanoid';
 
 import { DEFAULT_SETTINGS, emptyRequest } from '../../../shared/collections.ts';
-import type { KV, RequestAuth, RequestSpec } from '../../../shared/collections.ts';
+import type { KV, RequestAuth, RequestBody, RequestSpec } from '../../../shared/collections.ts';
 import { emptyImport, type ImportedCollection, type ImportedFolder } from './types.ts';
 
 interface Resource {
@@ -111,12 +111,32 @@ function bodyOf(body: Resource['body'], name: string, warnings: string[]): Reque
   }
 
   const text = String(body.text ?? '');
-  if (mime.includes('graphql')) return { mode: 'json', text };
+  if (mime.includes('graphql')) return graphqlBody(text);
   if (mime.includes('xml')) return { mode: 'xml', text };
   if (mime.includes('json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
     return { mode: 'json', text };
   }
   return text ? { mode: 'text', text } : { mode: 'none' };
+}
+
+/** Insomnia stores a GraphQL body as the JSON request object in `text`. */
+function graphqlBody(text: string): RequestBody {
+  try {
+    const obj = JSON.parse(text) as { query?: unknown; variables?: unknown; operationName?: unknown };
+    if (typeof obj.query === 'string') {
+      return {
+        mode: 'graphql',
+        graphql: {
+          query: obj.query,
+          variables: obj.variables && Object.keys(obj.variables).length ? JSON.stringify(obj.variables, null, 2) : '',
+          operationName: typeof obj.operationName === 'string' ? obj.operationName : undefined,
+        },
+      };
+    }
+  } catch {
+    /* not the usual shape — keep it as JSON text rather than lose it */
+  }
+  return { mode: 'json', text };
 }
 
 export function importInsomnia(doc: any): ImportedCollection {

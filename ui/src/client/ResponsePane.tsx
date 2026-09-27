@@ -7,10 +7,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { JsonTree } from './JsonTree.tsx';
+import { TimingView } from './TimingView.tsx';
 import { formatBytes } from '../lib/format.ts';
 import type { SendResult } from '../../../shared/collections.ts';
 
-type View = 'preview' | 'tree' | 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream';
+type View = 'preview' | 'tree' | 'pretty' | 'raw' | 'headers' | 'cookies' | 'tests' | 'stream' | 'timing';
 
 interface Props {
   result?: SendResult;
@@ -236,11 +237,15 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
               </>
             )}
             {result.redirects.length > 0 && (
-              <Metric
-                icon="fa-arrow-turn-down"
-                value={`${result.redirects.length} redirect${result.redirects.length > 1 ? 's' : ''}`}
-                title={result.redirects.map((r) => `${r.status} → ${r.to}`).join('\n')}
-              />
+              <button
+                type="button"
+                onClick={() => setView('timing')}
+                title={`${result.redirects.map((r) => `${r.status} → ${r.to}`).join('\n')}\n\nClick for the waterfall`}
+                className="rounded text-xs text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+              >
+                <i className="fa-solid fa-arrow-turn-down" /> {result.redirects.length} redirect
+                {result.redirects.length > 1 ? 's' : ''}
+              </button>
             )}
             {checks.length > 0 && (
               <button
@@ -299,6 +304,7 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
             'raw',
             'headers',
             'cookies',
+            'timing',
             ...(hasDiagnostics ? (['tests'] as View[]) : []),
           ] as View[]).map((id) => (
             <button
@@ -318,6 +324,9 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
                 <span className="ml-1 text-[10px] text-slate-400">
                   {Object.keys(result.headers).length}
                 </span>
+              )}
+              {id === 'timing' && result.redirects.length > 0 && (
+                <span className="ml-1 text-[10px] text-amber-500">{result.redirects.length}</span>
               )}
               {id === 'tests' && checks.length > 0 && (
                 <span className="ml-1 text-[10px] text-slate-400">
@@ -366,6 +375,7 @@ export function ResponsePane({ result, error, sending, liveStream, historical }:
             <Body text={result.body} wrap={wrap} />
           ))}
         {result && !error && view === 'headers' && <HeaderTable headers={result.headers} />}
+        {result && !error && view === 'timing' && <TimingView result={result} />}
         {result && !error && view === 'tests' && (
           <div className="p-3 text-xs">
             {result.scriptError && (

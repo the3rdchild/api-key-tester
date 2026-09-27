@@ -132,15 +132,17 @@ function bodyOf(body: any, warnings: string[], name: string): RequestSpec['body'
       }
       return { mode: 'multipart', multipart: rows };
     }
-    case 'graphql':
+    case 'graphql': {
+      // Postman keeps variables as the text you typed; so do we
+      const vars = body.graphql?.variables;
       return {
-        mode: 'json',
-        text: JSON.stringify(
-          { query: body.graphql?.query ?? '', variables: safeParse(body.graphql?.variables) },
-          null,
-          2,
-        ),
+        mode: 'graphql',
+        graphql: {
+          query: String(body.graphql?.query ?? ''),
+          variables: typeof vars === 'string' ? vars : vars ? JSON.stringify(vars, null, 2) : '',
+        },
       };
+    }
     case 'file':
       warnings.push(`"${name}": a binary file body was dropped - re-attach it in the Body tab.`);
       return { mode: 'none' };
@@ -149,14 +151,6 @@ function bodyOf(body: any, warnings: string[], name: string): RequestSpec['body'
   }
 }
 
-function safeParse(text: unknown): unknown {
-  if (typeof text !== 'string' || !text.trim()) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {};
-  }
-}
 
 function authOf(auth: any, warnings: string[], name: string): RequestAuth {
   if (!auth?.type || auth.type === 'noauth') return { type: 'none' };

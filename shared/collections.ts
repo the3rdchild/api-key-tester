@@ -25,11 +25,21 @@ export interface MultipartRow {
 
 export interface RequestBody {
   mode: BodyMode;
-  /** json | text | xml | graphql */
+  /** json | text | xml */
   text?: string;
   /** form-urlencoded rows */
   form?: KV[];
   multipart?: MultipartRow[];
+  graphql?: GraphQLBody;
+}
+
+/** Sent as the GraphQL-over-HTTP JSON object — or as query params on a GET. */
+export interface GraphQLBody {
+  query: string;
+  /** JSON text as typed, so a half-written object survives until it parses */
+  variables?: string;
+  /** which operation to run when the document holds several */
+  operationName?: string;
 }
 
 export type AuthType = 'none' | 'bearer' | 'basic' | 'header' | 'vault' | 'oauth2';
@@ -226,6 +236,14 @@ export interface RedirectHop {
   status: number;
   from: string;
   to: string;
+  /** the method this hop went out with (a 303 turns the next one into GET) */
+  method?: string;
+  /** when this hop went out, in ms after the request started */
+  startMs?: number;
+  /** from sending this hop to its response */
+  ms?: number;
+  /** credentials not carried to `to`, because it is on another origin */
+  dropped?: string[];
 }
 
 export interface SendResult {
@@ -239,9 +257,11 @@ export interface SendResult {
   /** full body size in bytes, before truncation */
   size: number;
   latencyMs: number;
-  /** time until response headers arrived */
+  /** time until response headers arrived, redirects included */
   ttfbMs: number;
   redirects: RedirectHop[];
+  /** ms spent following redirects before the final request went out */
+  redirectMs?: number;
   setCookies: string[];
   /** set when the request never completed (timeout, DNS, TLS, …) */
   error?: string;
