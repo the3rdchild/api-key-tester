@@ -10,9 +10,10 @@ import { CodeEditor } from './CodeEditor.tsx';
 import { KeyValueEditor } from './KeyValueEditor.tsx';
 import { MultipartEditor } from './MultipartEditor.tsx';
 import { MatrixDialog } from './MatrixDialog.tsx';
+import { MethodPicker } from './MethodPicker.tsx';
 import { OAuth2Editor } from './OAuth2Editor.tsx';
 import { clientApi } from '../lib/clientApi.ts';
-import { METHODS, STANDARD_METHODS } from '../../../shared/collections.ts';
+import { STANDARD_METHODS } from '../../../shared/collections.ts';
 import type { BodyMode, RequestSpec } from '../../../shared/collections.ts';
 import type { KeyEntry } from '../../../shared/types.ts';
 import type { Tab } from './useClient.ts';
@@ -101,25 +102,13 @@ export function RequestPane({
         <label htmlFor="req-method" className="sr-only">
           Method
         </label>
-        <input
+        <MethodPicker
           id="req-method"
-          list="req-method-presets"
           value={spec.method}
-          placeholder="GET"
-          spellCheck={false}
-          autoComplete="off"
-          aria-describedby={unusualMethod ? 'req-method-hint' : undefined}
-          onChange={(e) => onSpec({ method: e.target.value.toUpperCase() })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onSend();
-          }}
-          className="h-9 w-28 shrink-0 rounded border border-slate-300 bg-white px-2 text-sm font-semibold uppercase dark:border-slate-700 dark:bg-slate-800"
+          onChange={(m) => onSpec({ method: m })}
+          onEnter={onSend}
+          describedBy={unusualMethod ? 'req-method-hint' : undefined}
         />
-        <datalist id="req-method-presets">
-          {METHODS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
 
         <label htmlFor="req-url" className="sr-only">
           URL
